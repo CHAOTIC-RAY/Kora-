@@ -22,6 +22,7 @@ import {
   Cpu,
   ArrowRight,
   RotateCcw,
+  RotateCw,
   Volume2,
   VolumeX,
   Award,
@@ -119,6 +120,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
    */
   const [letterQueue, setLetterQueue] = useState<QueuedLetter[]>([]);
   const [tempPlaced, setTempPlaced] = useState<{ r: number; c: number; letter: string; rackIdx: number }[]>([]);
+  const [wordOrientation, setWordOrientation] = useState<"horizontal" | "vertical">("horizontal");
   const [log, setLog] = useState<string[]>([]);
 
   // Local sound override; global toggle via featureToggles is authoritative.
@@ -567,9 +569,123 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
     onLift: liftTempTile,
   });
 
+  /** Rotate the selected rack word, or the already staged word on the board. */
+  const rotateWordPlacement = () => {
+    playClickSound();
+    if (!tempPlaced.length) {
+      setWordOrientation((value) => value === "horizontal" ? "vertical" : "horizontal");
+      return;
+    }
+
+    if (tempPlaced.length < 2) return;
+    const currentlyHorizontal = new Set(tempPlaced.map((tile) => tile.r)).size === 1;
+    const nextOrientation = currentlyHorizontal ? "vertical" : "horizontal";
+    const ordered = [...tempPlaced].sort((a, b) => currentlyHorizontal ? a.c - b.c : a.r - b.r);
+    const pivot = ordered[Math.floor((ordered.length - 1) / 2)];
+    const oldKeys = new Set(tempPlaced.map((tile) => `${tile.r},${tile.c}`));
+    // Keep each tile's distance from the pivot. Existing board intersections
+    // can leave gaps in the staged tiles; collapsing those gaps would move
+    // letters into the wrong squares when the word is rotated.
+    const nextTiles = ordered.map((tile) => {
+      const offset = currentlyHorizontal ? tile.c - pivot.c : tile.r - pivot.r;
+      return {
+        ...tile,
+        r: nextOrientation === "vertical" ? pivot.r + offset : pivot.r,
+        c: nextOrientation === "horizontal" ? pivot.c + offset : pivot.c,
+      };
+    });
+
+    for (const tile of nextTiles) {
+      const key = `${tile.r},${tile.c}`;
+      if (tile.r < 0 || tile.r > 14 || tile.c < 0 || tile.c > 14 || (board[key] && !oldKeys.has(key))) {
+        setInvalidMsg("That direction is blocked. Move or recall the word before rotating it.");
+        return;
+      }
+    }
+
+    const nextBoard = { ...board };
+    oldKeys.forEach((key) => delete nextBoard[key]);
+    nextTiles.forEach((tile) => {
+      nextBoard[`${tile.r},${tile.c}`] = { letter: tile.letter, score: TILE_VALUES[tile.letter] || 1, isTemp: true };
+    });
+    setBoard(nextBoard);
+    setTempPlaced(nextTiles);
+    setWordOrientation(nextOrientation);
+    setInvalidMsg(null);
+  };
+
+  /** Place the whole selected word in one line with a single board tap. */
+  const placeSelectedWord = (row: number, col: number) => {
+    if (!isMyTurn() || letterQueue.length < 2) return false;
+    if (tempPlaced.length > 0) {
+      setInvalidMsg("Play or recall the word already on the board before placing another word.");
+      return true;
+    }
+    const me = getMyPlayer();
+    if (!me) return false;
+
+    let startRow = row;
+    let startCol = col;
+    const hasCommittedTiles = Object.values(board).some((cell) => !cell.isTemp);
+    // Make the opening move intuitive: tapping the star centers the selected word.
+    if (!hasCommittedTiles && row === 7 && col === 7) {
+      if (wordOrientation === "horizontal") startCol = 7 - Math.floor((letterQueue.length - 1) / 2);
+      else startRow = 7 - Math.floor((letterQueue.length - 1) / 2);
+    }
+
+    for (const queued of letterQueue) {
+      if (me.tiles[queued.rackIdx] !== queued.letter) {
+        setLetterQueue((current) => pruneQueue(current, me.tiles));
+        setInvalidMsg("Your rack changed. Select the word again.");
+        return true;
+      }
+    }
+
+    const nextTiles: typeof tempPlaced = [];
+    for (let index = 0; index < letterQueue.length; index++) {
+      const queued = letterQueue[index];
+      const r = startRow + (wordOrientation === "vertical" ? index : 0);
+      const c = startCol + (wordOrientation === "horizontal" ? index : 0);
+      if (r < 0 || r > 14 || c < 0 || c > 14) {
+        setInvalidMsg("The selected word does not fit there. Tap a row or column with enough space.");
+        return true;
+      }
+      const existing = board[`${r},${c}`];
+      if (existing) {
+        if (existing.isTemp || existing.letter !== queued.letter) {
+          setInvalidMsg("The word conflicts with a tile already on the board.");
+          return true;
+        }
+        // Reuse a matching committed letter as a crossword intersection. The
+        // selected rack tile stays in the player's rack and is deselected.
+        continue;
+      }
+      nextTiles.push({ r, c, letter: queued.letter, rackIdx: queued.rackIdx });
+    }
+    if (!nextTiles.length) {
+      setInvalidMsg("Place at least one new tile to play this word.");
+      return true;
+    }
+
+    playClickSound();
+    const nextBoard = { ...board };
+    nextTiles.forEach((tile) => {
+      me.tiles[tile.rackIdx] = "";
+      nextBoard[`${tile.r},${tile.c}`] = { letter: tile.letter, score: TILE_VALUES[tile.letter] || 1, isTemp: true };
+    });
+    setBoard(nextBoard);
+    setTempPlaced(nextTiles);
+    setLetterQueue([]);
+    setSelectedRackIdx(null);
+    setInvalidMsg(null);
+    return true;
+  };
+
   const clickBoardCell = (r: number, c: number) => {
     if (!isMyTurn()) return;
     const key = `${r},${c}`;
+
+    if (letterQueue.length > 1 && placeSelectedWord(r, c)) return;
 
     const tempIdx = tempPlaced.findIndex((tp) => tp.r === r && tp.c === c);
     if (tempIdx !== -1) {
@@ -1277,7 +1393,18 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
             {screen === "game" && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
                 {/* Left Column: Board */}
-                <div className="lg:col-span-7 flex flex-col items-center">
+                <div className="lg:col-span-7 relative flex flex-col items-center">
+                  {(letterQueue.length > 0 || tempPlaced.length > 0) && (
+                    <div className="absolute right-2 top-2 z-30 flex max-w-[calc(100%-1rem)] items-center gap-2 rounded-xl border border-kindle-accent/50 bg-kindle-bg/95 p-1.5 shadow-xl backdrop-blur">
+                      <span className="hidden px-1 text-[9px] font-bold uppercase tracking-wide text-kindle-text-muted sm:inline">
+                        {letterQueue.length ? `${wordOrientation} · ${letterQueue.length} tiles` : `${tempPlaced.length} tiles staged`}
+                      </span>
+                      <button type="button" onClick={rotateWordPlacement} disabled={tempPlaced.length === 1} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-kindle-border bg-kindle-card px-3 text-[10px] font-extrabold uppercase tracking-wide text-kindle-text disabled:opacity-40" aria-label="Rotate selected or placed word">
+                        <RotateCw className="h-4 w-4 text-kindle-accent" />
+                        {tempPlaced.length ? "Rotate word" : "Rotate direction"}
+                      </button>
+                    </div>
+                  )}
                   <div
                     ref={wordDrag.gridRef as React.RefObject<HTMLDivElement>}
                     onPointerMove={wordDrag.boardHandlers.onPointerMove}
@@ -1420,7 +1547,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                       </span>
                     </div>
                     {isMyTurn() && (
-                      <p className="text-xs text-kindle-text-muted">Place your tiles on the board</p>
+                      <p className="text-xs text-kindle-text-muted">{letterQueue.length > 1 ? "Tap one board square to place the whole selected word." : "Select rack tiles, then tap a board square."}</p>
                     )}
                     {!isMyTurn() && (
                       <p className="text-xs text-kindle-text-muted">Waiting for opponent...</p>
@@ -1454,7 +1581,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                         <div className="flex items-center gap-1.5 overflow-x-auto">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">Word:</span>
                           <span className="text-sm font-serif font-black text-amber-500 tracking-widest px-2 py-0.5 bg-amber-500/10 rounded-lg border border-amber-500/30">
-                            {queuedWord(letterQueue)}
+                            {letterQueue.length ? queuedWord(letterQueue) : tempPlaced.map((tile) => tile.letter).join("")}
                           </span>
                         </div>
                         <div className="flex items-center gap-1">

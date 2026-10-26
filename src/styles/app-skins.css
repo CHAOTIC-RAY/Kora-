@@ -1971,10 +1971,33 @@ body.skin-cyberui .kora-game-theme .uno-hand-card:not(:disabled) .uno-card-face 
   .kora-game-theme .uno-hand-fan {
     min-height: 148px !important;
     padding-inline: 1rem !important;
+    scrollbar-width: none;
   }
 
   .kora-game-theme .uno-hand-card { margin-left: -1.45rem; }
   .kora-game-theme .uno-hand-card:first-child { margin-left: 0; }
+}
+
+.kora-game-theme .uno-game-arena,
+.kora-game-theme .uno-hand-fan {
+  scrollbar-width: none;
+}
+
+.kora-game-theme .uno-game-arena::-webkit-scrollbar,
+.kora-game-theme .uno-hand-fan::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 420px) {
+  .kora-game-theme .uno-hand-card {
+    width: clamp(40px, 13vw, 54px) !important;
+    height: clamp(64px, 20vw, 84px) !important;
+  }
+
+  .kora-game-theme .uno-hand-fan {
+    min-height: 122px !important;
+    padding: 2rem 0.8rem 1rem !important;
+  }
 }
 
 /* Touch screens have no true hover. Suppress sticky hover/focus transforms so
