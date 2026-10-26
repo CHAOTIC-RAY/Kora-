@@ -66,6 +66,13 @@ function getGeminiClient() {
 
 app.use("/api/zlib", zlibRouter);
 
+app.get("/api/news/location", (req, res) => {
+  const rawCountry = req.headers["cf-ipcountry"] || req.headers["x-vercel-ip-country"] || "";
+  const country = String(rawCountry).trim().toUpperCase();
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ country: /^[A-Z]{2}$/.test(country) ? country : "" });
+});
+
 // RSS Feed Discovery & Fetch
 app.post("/api/feed/discover", express.json(), async (req, res) => {
   const inputUrl = req.body.url;

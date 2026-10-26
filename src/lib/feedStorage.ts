@@ -1,4 +1,5 @@
 import { dedupeFeedItems, isFeedItemWithinRetention, isRemovedFeedItem } from "./feedNormalize";
+import { COUNTRY_FEEDS, WORLDWIDE_FEEDS, feedsForCountry, saveNewsCountry } from "./countryFeeds";
 
 export interface FeedSubscription {
   id: string;
@@ -107,7 +108,7 @@ export interface TopicFeedGroup {
 export const TOPIC_FEED_GROUPS: TopicFeedGroup[] = [
   {
     id: "local",
-    label: "Local & Updates",
+    label: "Local",
     feeds: DEFAULT_FEED_SUBSCRIPTIONS,
   },
   {
@@ -187,7 +188,8 @@ export const TOPIC_FEED_OPTIONS: Omit<FeedSubscription, "id" | "addedAt">[] =
 export const CURATED_FEED_OPTIONS: Omit<FeedSubscription, "id" | "addedAt">[] = (() => {
   const seen = new Set<string>();
   const out: Omit<FeedSubscription, "id" | "addedAt">[] = [];
-  for (const feed of [...DEFAULT_FEED_SUBSCRIPTIONS, ...INTERNATIONAL_FEED_OPTIONS, ...TOPIC_FEED_OPTIONS]) {
+  const countrySpecificFeeds = COUNTRY_FEEDS.flatMap((country) => country.feeds);
+  for (const feed of [...DEFAULT_FEED_SUBSCRIPTIONS, ...INTERNATIONAL_FEED_OPTIONS, ...TOPIC_FEED_OPTIONS, ...countrySpecificFeeds, ...WORLDWIDE_FEEDS]) {
     if (seen.has(feed.feedUrl)) continue;
     seen.add(feed.feedUrl);
     out.push(feed);
@@ -239,6 +241,33 @@ export function applySelectedFeedSources(feedUrls: string[]): FeedSubscription[]
   saveFeedSubscriptions(seeded);
   localStorage.setItem(FEED_MIGRATION_KEY, "1");
   return seeded;
+}
+
+/** Switch the Local topic to a country's curated sources, keeping other selected topics. */
+export function applyLocalNewsCountry(countryCode: string): FeedSubscription[] {
+  const code = countryCode.trim().toUpperCase();
+  saveNewsCountry(code);
+  const localUrls = new Set([
+    ...DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl),
+    ...COUNTRY_FEEDS.flatMap((country) => country.feeds.map((feed) => feed.feedUrl)),
+    ...WORLDWIDE_FEEDS.map((feed) => feed.feedUrl),
+  ]);
+  const nonLocalTopicUrls = new Set(
+    TOPIC_FEED_GROUPS.filter((group) => group.id !== "local").flatMap((group) => group.feeds.map((feed) => feed.feedUrl))
+  );
+  const subscriptions = getFeedSubscriptions();
+  const keepEnabled = subscriptions
+    .filter(isFeedSubscriptionEnabled)
+    .map((sub) => sub.feedUrl)
+    .filter((url) => !localUrls.has(url) || nonLocalTopicUrls.has(url));
+  const selectedUrls = new Set([...keepEnabled, ...feedsForCountry(code).map((feed) => feed.feedUrl)]);
+  const removedSubscriptionIds = new Set(
+    subscriptions.filter((sub) => localUrls.has(sub.feedUrl) && !selectedUrls.has(sub.feedUrl)).map((sub) => sub.id)
+  );
+  if (removedSubscriptionIds.size) {
+    saveFeedItems(getFeedItems().filter((item) => !removedSubscriptionIds.has(item.subscriptionId)));
+  }
+  return applySelectedFeedSources([...selectedUrls]);
 }
 
 const REMOVED_DEFAULT_FEED_URLS = new Set([

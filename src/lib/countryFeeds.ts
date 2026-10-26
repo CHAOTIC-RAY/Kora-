@@ -10,6 +10,8 @@
  */
 import type { FeedSubscription } from "./feedStorage";
 
+export const NEWS_COUNTRY_STORAGE_KEY = "kora_news_country";
+
 export interface CountryFeeds {
   /** ISO 3166-1 alpha-2, upper case. */
   code: string;
@@ -186,4 +188,20 @@ export function feedsForCountry(code: string | null | undefined) {
 export function countryName(code: string | null | undefined): string {
   const c = (code || "").trim().toUpperCase();
   return COUNTRY_FEEDS.find((x) => x.code === c)?.name || "";
+}
+
+export function getSavedNewsCountry(): string {
+  try {
+    return (localStorage.getItem(NEWS_COUNTRY_STORAGE_KEY) || "").trim().toUpperCase();
+  } catch {
+    return "";
+  }
+}
+
+export function saveNewsCountry(code: string): void {
+  try {
+    localStorage.setItem(NEWS_COUNTRY_STORAGE_KEY, code.trim().toUpperCase());
+  } catch {
+    // Feed selection still works for the current session when storage is unavailable.
+  }
 }

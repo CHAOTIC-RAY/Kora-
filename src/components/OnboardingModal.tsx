@@ -16,6 +16,8 @@ import {
   Sun,
   Smartphone,
   Flame,
+  MapPin,
+  LocateFixed,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "react-hot-toast";
@@ -23,6 +25,8 @@ import {
   DEFAULT_FEED_SUBSCRIPTIONS,
   TOPIC_FEED_GROUPS,
 } from "../lib/feedStorage";
+import { COUNTRY_OPTIONS, countryName, feedsForCountry, getSavedNewsCountry } from "../lib/countryFeeds";
+import { detectNewsCountry } from "../lib/newsLocation";
 import { DEFAULT_APP_SKIN, type AppSkinId } from "../lib/appSkin";
 import { getTimeOfDayAutoTheme } from "../lib/readerThemes";
 
@@ -39,6 +43,7 @@ interface OnboardingModalProps {
     autoCache: boolean;
     dailyReminders: boolean;
     selectedFeedUrls: string[];
+    countryCode: string;
   }) => void;
   onThemeChange: (theme: string) => void;
   autoDisplayTheme?: boolean;
@@ -259,19 +264,33 @@ export default function OnboardingModal({
   const [dailyBriefNotification, setDailyBriefNotification] = useState(false);
   const [agreedToLicenses, setAgreedToLicenses] = useState(false);
   const [selectedTopics, setSelectedTopics] = useState<string[]>(["local", "world"]);
+  const [countryCode, setCountryCode] = useState(() => getSavedNewsCountry());
+  const [detectingCountry, setDetectingCountry] = useState(false);
 
   // Track display theme locally so completion payload stays valid
   const [currentDisplayTheme, setCurrentDisplayTheme] = useState(() => localStorage.getItem("kora_display_theme") || "theme-light-white");
+
+  React.useEffect(() => {
+    if (!isOpen || countryCode) return;
+    let cancelled = false;
+    setDetectingCountry(true);
+    void detectNewsCountry().then((detected) => {
+      if (!cancelled && detected) setCountryCode(detected);
+    }).finally(() => {
+      if (!cancelled) setDetectingCountry(false);
+    });
+    return () => { cancelled = true; };
+  }, [isOpen, countryCode]);
 
   // Feed URLs derived from selected topics (each topic bundles multiple site feeds).
   const selectedFeedUrls = React.useMemo(() => {
     const urls = new Set<string>();
     for (const topicId of selectedTopics) {
       const group = TOPIC_FEED_GROUPS.find((g) => g.id === topicId);
-      group?.feeds.forEach((f) => urls.add(f.feedUrl));
+      (group?.id === "local" ? feedsForCountry(countryCode) : group?.feeds || []).forEach((f) => urls.add(f.feedUrl));
     }
     return Array.from(urls);
-  }, [selectedTopics]);
+  }, [selectedTopics, countryCode]);
 
   if (!isOpen) return null;
 
@@ -314,6 +333,7 @@ export default function OnboardingModal({
       dailyGoal,
       autoCache,
       dailyReminders,
+      countryCode,
       selectedFeedUrls: selectedFeedUrls.length
         ? selectedFeedUrls
         : DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl),
@@ -490,7 +510,7 @@ export default function OnboardingModal({
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {TOPIC_FEED_GROUPS.map((group) => {
                       const selected = selectedTopics.includes(group.id);
-                      const count = group.feeds.length;
+                      const count = group.id === "local" ? feedsForCountry(countryCode).length : group.feeds.length;
                       return (
                         <button
                           key={group.id}
@@ -517,6 +537,50 @@ export default function OnboardingModal({
                       );
                     })}
                   </div>
+
+                  {selectedTopics.includes("local") && (
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 rounded-xl border border-kindle-border bg-kindle-bg/40 p-3">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-kindle-text min-w-0">
+                        <MapPin className="w-4 h-4 text-sky-500 shrink-0" />
+                        <span className="shrink-0">Local news for</span>
+                        <select
+                          value={countryCode}
+                          onChange={(event) => setCountryCode(event.target.value)}
+                          className="min-w-0 flex-1 bg-kindle-card border border-kindle-border rounded-lg px-2.5 py-2 text-xs text-kindle-text"
+                          aria-label="Choose local news country"
+                        >
+                          <option value="WW">Worldwide fallback</option>
+                          {COUNTRY_OPTIONS.map((country) => (
+                            <option key={country.code} value={country.code}>{country.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        disabled={detectingCountry}
+                        onClick={() => {
+                          setDetectingCountry(true);
+                          void detectNewsCountry().then((detected) => {
+                            if (detected) setCountryCode(detected);
+                            else toast.error("We couldn't detect a supported country. Choose one from the list.");
+                          }).finally(() => setDetectingCountry(false));
+                        }}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text disabled:opacity-50"
+                      >
+                        <LocateFixed className="w-3.5 h-3.5" />
+                        {detectingCountry ? "Detecting…" : "Detect location"}
+                      </button>
+                      <p className="sm:col-span-2 text-[10px] text-kindle-text-muted">
+                        {countryName(countryCode)
+                          ? `${countryName(countryCode)} news sources will be added automatically.`
+                          : countryCode === "WW"
+                            ? "Worldwide sources will be used for your Local feed."
+                            : detectingCountry
+                              ? "Detecting your country to choose local sources…"
+                              : "Choose a country to add its local sources. Unsupported locations use worldwide news."}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap gap-2">
                     <button

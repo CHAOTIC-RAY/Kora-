@@ -14,18 +14,20 @@ import {
   Sparkles,
   Trash2,
   X,
+  MapPin,
+  LocateFixed,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import type { BookMetadata } from "../lib/firebase";
 import { prefetchFeedArticles } from "../lib/feedArticle";
 import {
   addFeedSubscription,
+  applyLocalNewsCountry,
   ensureDefaultSubscriptions,
   FeedItem,
   FeedSubscription,
   getFeedItems,
   isCuratedFeedUrl,
-  isDefaultFeedUrl,
   isFeedSubscriptionEnabled,
   isInternationalFeedUrl,
   markFeedItemRead,
@@ -39,6 +41,8 @@ import { discoverFeed, refreshAllSubscriptions } from "../lib/feedClient";
 import { clipUrlToLibrary } from "../lib/feedClipper";
 import { isTelegramArticleLink } from "../lib/telegramFeed";
 import { isFeedItemWithinRetention } from "../lib/feedNormalize";
+import { COUNTRY_OPTIONS, countryName, feedsForCountry, getSavedNewsCountry } from "../lib/countryFeeds";
+import { detectNewsCountry } from "../lib/newsLocation";
 import { getItemThumbnail, markFeedImageBroken, prefetchFeedPreviews } from "../lib/feedPreview";
 import { briefPayloadFromFeeds, syncAndroidHomeWidgets } from "../lib/androidWidgets";
 import { textDirection } from "../lib/textDirection";
@@ -373,6 +377,8 @@ function FeedView({
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [showManageFeeds, setShowManageFeeds] = useState(false);
+  const [localNewsCountry, setLocalNewsCountry] = useState(() => getSavedNewsCountry());
+  const [detectingLocalCountry, setDetectingLocalCountry] = useState(false);
   const [addFeedUrl, setAddFeedUrl] = useState("");
   const [addFeedError, setAddFeedError] = useState<string | null>(null);
   const [addingFeed, setAddingFeed] = useState(false);
@@ -457,19 +463,60 @@ function FeedView({
     }
   }, [enrichFeedItems]);
 
-  useEffect(() => {
-    loadLocalState();
-    const subs = ensureDefaultSubscriptions();
-    const activeSubs = subs.filter(isFeedSubscriptionEnabled);
-    const newestFetch = Math.max(0, ...activeSubs.map((sub) => sub.lastFetchedAt || 0));
-    const hasNeverFetched = activeSubs.some((sub) => !sub.lastFetchedAt);
-    // Skip network refresh when feeds were fetched recently (keeps first paint snappy),
-    // but always refresh when a newly enabled source has never been fetched.
-    if (!hasNeverFetched && newestFetch && Date.now() - newestFetch < 5 * 60 * 1000) {
-      setItems(getFeedItems());
-      return;
+  const changeLocalNewsCountry = useCallback(async (code: string) => {
+    const next = applyLocalNewsCountry(code);
+    setLocalNewsCountry(code);
+    setSubscriptions(next);
+    setSelectedSubscriptionId(null);
+    await refreshFeeds();
+    toast.success(`Local news sources updated for ${countryName(code) || "Worldwide"}.`);
+  }, [refreshFeeds]);
+
+  const detectLocalNewsCountry = useCallback(async () => {
+    setDetectingLocalCountry(true);
+    try {
+      const detected = await detectNewsCountry();
+      if (!detected) {
+        toast.error("We couldn't detect a supported country. Choose one from the list.");
+        return;
+      }
+      await changeLocalNewsCountry(detected);
+    } finally {
+      setDetectingLocalCountry(false);
     }
-    void refreshFeeds();
+  }, [changeLocalNewsCountry]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const initialize = async () => {
+      loadLocalState();
+      let savedCountry = getSavedNewsCountry();
+      if (!savedCountry) {
+        setDetectingLocalCountry(true);
+        const detected = await detectNewsCountry();
+        if (cancelled) return;
+        savedCountry = detected || "WW";
+        setLocalNewsCountry(savedCountry);
+        setSubscriptions(applyLocalNewsCountry(savedCountry));
+        setDetectingLocalCountry(false);
+        await refreshFeeds();
+        return;
+      }
+      setLocalNewsCountry(savedCountry);
+      const subs = ensureDefaultSubscriptions();
+      const activeSubs = subs.filter(isFeedSubscriptionEnabled);
+      const newestFetch = Math.max(0, ...activeSubs.map((sub) => sub.lastFetchedAt || 0));
+      const hasNeverFetched = activeSubs.some((sub) => !sub.lastFetchedAt);
+      // Skip network refresh when feeds were fetched recently (keeps first paint snappy),
+      // but always refresh when a newly enabled source has never been fetched.
+      if (!hasNeverFetched && newestFetch && Date.now() - newestFetch < 5 * 60 * 1000) {
+        setItems(getFeedItems());
+        return;
+      }
+      await refreshFeeds();
+    };
+    void initialize();
+    return () => { cancelled = true; };
   }, [loadLocalState, refreshFeeds]);
 
   useEffect(() => {
@@ -592,13 +639,17 @@ function FeedView({
     }
   }, [feedLayout]);
 
-  const maldivesSources = useMemo(
-    () => subscriptions.filter((sub) => isDefaultFeedUrl(sub.feedUrl)),
-    [subscriptions]
+  const localSourceUrls = useMemo(
+    () => new Set(feedsForCountry(localNewsCountry).map((feed) => feed.feedUrl)),
+    [localNewsCountry]
+  );
+  const localSources = useMemo(
+    () => subscriptions.filter((sub) => localSourceUrls.has(sub.feedUrl)),
+    [subscriptions, localSourceUrls]
   );
   const internationalSources = useMemo(
-    () => subscriptions.filter((sub) => isInternationalFeedUrl(sub.feedUrl)),
-    [subscriptions]
+    () => subscriptions.filter((sub) => isInternationalFeedUrl(sub.feedUrl) && !localSourceUrls.has(sub.feedUrl)),
+    [subscriptions, localSourceUrls]
   );
   const customSources = useMemo(
     () => subscriptions.filter((sub) => !isCuratedFeedUrl(sub.feedUrl)),
@@ -900,7 +951,7 @@ function FeedView({
               <div>
                 <h3 className="text-sm font-lexend font-bold text-kindle-text">Manage Sources</h3>
                 <p className="text-[10px] text-kindle-text-muted mt-0.5">
-                  Toggle sources on or off — nothing is unsubscribed.
+                  Choose your local region and toggle sources on or off.
                 </p>
               </div>
               <button onClick={() => dismissManageFeeds()} className="p-1.5 rounded-lg hover:bg-kindle-bg text-kindle-text">
@@ -908,9 +959,40 @@ function FeedView({
               </button>
             </div>
 
+            <div className="rounded-xl border border-kindle-border bg-kindle-bg/50 p-3 space-y-2">
+              <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">
+                <MapPin className="w-3.5 h-3.5 text-sky-500" /> Local news country
+              </label>
+              <div className="flex gap-2">
+                <select
+                  value={localNewsCountry || "WW"}
+                  onChange={(event) => void changeLocalNewsCountry(event.target.value)}
+                  className="min-w-0 flex-1 bg-kindle-card border border-kindle-border rounded-lg px-3 py-2 text-xs text-kindle-text"
+                  aria-label="Choose country for local news"
+                >
+                  <option value="WW">Worldwide fallback</option>
+                  {COUNTRY_OPTIONS.map((country) => (
+                    <option key={country.code} value={country.code}>{country.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void detectLocalNewsCountry()}
+                  disabled={detectingLocalCountry}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text disabled:opacity-50"
+                >
+                  <LocateFixed className="w-3.5 h-3.5" />
+                  {detectingLocalCountry ? "Detecting…" : "Auto detect"}
+                </button>
+              </div>
+              <p className="text-[10px] text-kindle-text-muted">
+                {feedsForCountry(localNewsCountry).length} local sources for {countryName(localNewsCountry) || "Worldwide"}. Changing this refreshes your local feed set.
+              </p>
+            </div>
+
             <div className="space-y-4">
               {[
-                { label: "Maldives", sources: maldivesSources },
+                { label: `Local · ${countryName(localNewsCountry) || "Worldwide"}`, sources: localSources },
                 { label: "International", sources: internationalSources },
                 { label: "Custom", sources: customSources },
               ].map((group) =>

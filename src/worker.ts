@@ -498,6 +498,18 @@ export default {
       });
     }
 
+    if (path === "/api/news/location" && request.method === "GET") {
+      const edgeCountry = (request as Request & { cf?: { country?: string } }).cf?.country;
+      const country = (edgeCountry || request.headers.get("cf-ipcountry") || "").trim().toUpperCase();
+      return new Response(JSON.stringify({ country: /^[A-Z]{2}$/.test(country) ? country : "" }), {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
     // Browser Proxy Route using Cloudflare's Browser Run (env.BROWSER) & native HTMLRewriter
     if (path === "/api/browser-proxy") {
       let targetUrl = url.searchParams.get("url");
