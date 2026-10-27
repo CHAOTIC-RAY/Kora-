@@ -1,3 +1,8 @@
+import { fetchDiscoverApi, mapWithConcurrency } from "../lib/discoverApi";
+import { ALL_CATEGORIES, getCategoryDescription } from "../lib/discoverCategories";
+import DiscoverRatingBadge from "./discover/DiscoverRatingBadge";
+
+import { injectMetadataIntoEpub } from "../lib/epubMetadata";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import ReactDOM from "react-dom";
@@ -32,58 +37,6 @@ import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
 
-/** Retry transient same-origin API/network failures without letting a whole feed load fail. */
-async function fetchDiscoverApi(input: RequestInfo | URL, init: RequestInit = {}, attempts = 2): Promise<Response> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    try {
-      const response = await fetch(input, {
-        ...init,
-        signal: init.signal ?? AbortSignal.timeout(15000),
-        credentials: "same-origin",
-      });
-      if (response.ok || response.status < 500 || attempt === attempts - 1) return response;
-      lastError = new Error(`Discover API returned HTTP ${response.status}`);
-    } catch (error) {
-      lastError = error;
-      if (attempt === attempts - 1) break;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
-  }
-  throw lastError instanceof Error ? lastError : new Error("Discover API request failed");
-}
-
-/** Keep optional feeds from opening a burst of requests that can fail on mobile networks. */
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let nextIndex = 0;
-  const workers = Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, async () => {
-    while (nextIndex < items.length) {
-      const index = nextIndex++;
-      results[index] = await mapper(items[index]);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
-function BookRatingBadge({ book, className = "" }: { book: any; className?: string }) {
-  const display = getDisplayRating(book);
-  if (!display) return null;
-  return (
-    <div
-      className={`absolute top-2 right-2 bg-amber-500/95 text-white font-sans font-bold text-[8.5px] px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-md z-10 ${className}`}
-      title={display.title}
-    >
-      ★ {display.value}
-    </div>
-  );
-}
-
 interface DiscoverViewProps {
   userId: string;
   books: BookMetadata[];
@@ -93,7 +46,6 @@ interface DiscoverViewProps {
   onSelectedBookChange: (book: any | null) => void;
   grayscaleCovers?: boolean;
   hideCovers?: boolean;
-  zlibConfig?: any;
   coverBackupProvider?: string;
   initialQuery?: string | null;
   onClearInitialQuery?: () => void;
@@ -114,137 +66,6 @@ interface DiscoverViewProps {
   onOpenCreateView?: () => void;
 }
 
-async function injectMetadataIntoEpub(
-  fileBlob: Blob,
-  title: string,
-  author: string,
-  description?: string,
-  publisher?: string,
-  year?: string
-): Promise<Blob> {
-  try {
-    const zip = await JSZip.loadAsync(fileBlob);
-    let opfPath = "";
-    
-    const containerFile = zip.file("META-INF/container.xml");
-    if (containerFile) {
-      const containerXml = await containerFile.async("text");
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(containerXml, "text/xml");
-      const rootfile = doc.querySelector("rootfile");
-      if (rootfile) {
-        opfPath = rootfile.getAttribute("full-path") || "";
-      }
-    }
-    
-    if (!opfPath) {
-      opfPath = Object.keys(zip.files).find(name => name.endsWith(".opf")) || "";
-    }
-    
-    if (opfPath) {
-      const opfFile = zip.file(opfPath);
-      if (opfFile) {
-        const opfText = await opfFile.async("text");
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(opfText, "text/xml");
-        
-        const metadataNode = doc.querySelector("metadata") || doc.querySelector("opf\\:metadata");
-        if (metadataNode) {
-          const setMetadataTag = (tagName: string, value: string, attributes?: Record<string, string>) => {
-            let el = doc.querySelector(tagName.replace(":", "\\:"));
-            if (!el) {
-              const localName = tagName.split(":").pop() || tagName;
-              el = doc.querySelector(localName);
-            }
-            if (el) {
-              el.textContent = value;
-            } else {
-              const newEl = doc.createElementNS("http://purl.org/dc/elements/1.1/", tagName);
-              newEl.textContent = value;
-              if (attributes) {
-                Object.entries(attributes).forEach(([k, v]) => newEl.setAttribute(k, v));
-              }
-              metadataNode.appendChild(newEl);
-            }
-          };
-          
-          setMetadataTag("dc:title", title);
-          setMetadataTag("dc:creator", author, { "opf:role": "aut" });
-          if (description) {
-            setMetadataTag("dc:description", description);
-          }
-          if (publisher) {
-            setMetadataTag("dc:publisher", publisher);
-          }
-          if (year) {
-            setMetadataTag("dc:date", year);
-          }
-          
-          const serializer = new XMLSerializer();
-          const updatedOpfText = serializer.serializeToString(doc);
-          zip.file(opfPath, updatedOpfText);
-          
-          const newBlob = await zip.generateAsync({ 
-            type: "blob", 
-            mimeType: "application/epub+zip",
-            compression: "DEFLATE",
-            compressionOptions: { level: 5 }
-          });
-          return newBlob;
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("Failed to inject metadata into EPUB file:", err);
-  }
-  return fileBlob;
-}
-
-// Define all possible categories tied to their connector IDs
-const ALL_CATEGORIES = [
-  { id: "hardcover-fiction",    title: "NYT: Hardcover Fiction",    query: "hardcover-fiction", source: "nyt" },
-  { id: "hardcover-nonfiction", title: "NYT: Hardcover Nonfiction", query: "hardcover-nonfiction", source: "nyt" },
-  { id: "paperback-nonfiction", title: "NYT: Paperback Nonfiction", query: "paperback-nonfiction", source: "nyt" },
-  { id: "e-book-fiction",       title: "NYT: E-Book Fiction",       query: "e-book-fiction", source: "nyt" },
-  { id: "e-book-nonfiction",    title: "NYT: E-Book Nonfiction",    query: "e-book-nonfiction", source: "nyt" },
-  { id: "nyt-combined-fiction", title: "NYT: Combined Fiction", query: "combined-print-and-e-book-fiction", source: "nyt" },
-  { id: "nyt-combined-nonfiction", title: "NYT: Combined Nonfiction", query: "combined-print-and-e-book-nonfiction", source: "nyt" },
-  { id: "nyt-business",         title: "NYT: Business",            query: "business-books", source: "nyt" },
-  { id: "advice-how-to",        title: "Advice & How-To",           query: "advice-how-to", source: "nyt" },
-  { id: "childrens-middle-grade-hardcover", title: "Middle Grade", query: "childrens-middle-grade-hardcover", source: "nyt" },
-  { id: "young-adult-hardcover", title: "Young Adult", query: "young-adult-hardcover", source: "nyt" },
-  { id: "goodreads-weekly-blog", title: "Goodreads: Trending This Week", query: "goodreads-blog-3182-weekly", source: "goodreads" },
-  { id: "goodreads-best-ever",  title: "Goodreads: Best Ever",     query: "1.Best_Books_Ever", source: "goodreads" },
-  { id: "goodreads-read-once",  title: "Goodreads: Read Once",      query: "264.Books_That_Everyone_Should_Read_At_Least_Once", source: "goodreads" },
-  { id: "goodreads-21st",       title: "Goodreads: 21st Century",   query: "7.Best_Books_of_the_21st_Century", source: "goodreads" },
-  { id: "audiobooks-popular",   title: "Popular Audiobooks",        query: "popular", source: "audiobook", mode: "popular" },
-  { id: "audiobooks-fiction",   title: "Fiction Audiobooks",        query: "fiction", source: "audiobook", mode: "search" },
-  { id: "audiobooks-mystery",   title: "Mystery & Thriller Audiobooks", query: "mystery thriller", source: "audiobook", mode: "search" },
-  { id: "audiobooks-scifi",     title: "Sci-Fi & Fantasy Audiobooks", query: "science fiction fantasy", source: "audiobook", mode: "search" },
-  { id: "netgalley-recent-audiobooks", title: "NetGalley: Recent Audiobooks", query: "recentlyAddedAudiobooks", source: "netgalley" },
-  { id: "netgalley-requested-audiobooks", title: "NetGalley: Most Requested Audiobooks", query: "mostRequestedAudiobooks", source: "netgalley" },
-  { id: "netgalley-recent-drcs", title: "NetGalley: Recently Added Books", query: "recentlyAddedDRCs", source: "netgalley" },
-  { id: "netgalley-requested-drcs", title: "NetGalley: Most Requested Books", query: "mostRequested", source: "netgalley" },
-  { id: "netgalley-mystery", title: "NetGalley: Mystery & Thrillers", query: "16", source: "netgalley" },
-  { id: "netgalley-scifi", title: "NetGalley: Sci-Fi & Fantasy", query: "22", source: "netgalley" },
-  { id: "netgalley-horror", title: "NetGalley: Horror", query: "41", source: "netgalley" },
-  { id: "netgalley-romance", title: "NetGalley: Romance", query: "21", source: "netgalley" },
-  { id: "netgalley-fiction", title: "NetGalley: General Fiction", query: "35", source: "netgalley" },
-  { id: "netgalley-ya", title: "NetGalley: Young Adult", query: "27", source: "netgalley" },
-];
-
-function getCategoryDescription(category: { source?: string }) {
-  if (category.source === "netgalley") {
-    return "Official catalog listings from NetGalley. Browse digital review copies (DRCs), requested audiobooks, and genre collections.";
-  }
-  if (category.source === "audiobook") {
-    return "Popular audiobooks from free streaming archives. Click any title for downloads and listening options.";
-  }
-  if (category.source === "goodreads") {
-    return "Trending picks from Goodreads lists. Click any book to search and download.";
-  }
-  return "Top trending books currently featured on the New York Times Best Sellers list. Click any book to search and download.";
-}
 
 
 function DiscoverView({ 
@@ -256,7 +77,6 @@ function DiscoverView({
   onSelectedBookChange,
   grayscaleCovers = false, 
   hideCovers = false,
-  zlibConfig,
   initialQuery = null,
   onClearInitialQuery,
   initialBookId = null,
@@ -908,52 +728,7 @@ function DiscoverView({
       // Z-Library is now served through Rave (the sole relay). The direct
       // Z-Lib eAPI login/download calls were removed from the Worker, so any
       // "zlib" result falls through to the Rave-based download path below.
-      if (false && variant.sourceId === "zlib") {
-        setFetchingFeaturedMirrors(true);
-        let userId = undefined;
-        let userKey = undefined;
-
-        if (zlibConfig?.email && zlibConfig?.password) {
-          const loginRes = await fetch(`/api/zlib/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email: zlibConfig.email,
-              password: zlibConfig.password,
-              baseUrl: zlibConfig.baseUrl,
-            })
-          });
-          if (loginRes.ok) {
-            const loginData = await loginRes.json();
-            if (loginData.user) {
-              userId = loginData.user.id;
-              userKey = loginData.user.remix_userkey;
-            }
-          }
-        }
-
-        const zRes = await fetch(`/api/zlib/download-link`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            book_id: variant.id,
-            book_hash: variant.hash,
-            baseUrl: zlibConfig?.baseUrl,
-            user_id: userId,
-            user_key: userKey
-          }),
-          signal: AbortSignal.timeout(10000)
-        });
-        const data = await zRes.json();
-        if (data.error) throw new Error(data.error.message || data.error);
-        if (data.download_link) {
-          setFeaturedMirrors([{ url: data.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }]);
-        } else if (data.file && data.file.download_link) {
-          setFeaturedMirrors([{ url: data.file.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }]);
-        } else if (instant.length === 0) {
-          setFeaturedMirrorError("No download link found for this book.");
-        }
-      } else {
+      {
         const iaParam = variant.iaId ? `&iaId=${encodeURIComponent(variant.iaId)}` : "";
         const directParam = variant.downloadUrl ? `&url=${encodeURIComponent(variant.downloadUrl)}` : "";
         const res = await fetch(`/api/annas-archive/download?md5=${variant.md5}${iaParam}${directParam}`, {
@@ -2653,58 +2428,7 @@ function DiscoverView({
     let hadUsableMirrors = false;
     try {
       // Z-Library results now come via Rave; the direct eAPI path was removed.
-      if (false && activeVariant.sourceId === "zlib") {
-        let userId = undefined;
-        let userKey = undefined;
-
-        if (zlibConfig?.email && zlibConfig?.password) {
-          const loginRes = await fetch(`/api/zlib/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email: zlibConfig.email,
-              password: zlibConfig.password,
-              baseUrl: zlibConfig.baseUrl,
-            })
-          });
-          if (loginRes.ok) {
-            const loginData = await loginRes.json();
-            if (loginData.user) {
-              userId = loginData.user.id;
-              userKey = loginData.user.remix_userkey;
-            }
-          }
-        }
-
-        const zRes = await fetch(`/api/zlib/download-link`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            book_id: activeVariant.id,
-            book_hash: activeVariant.hash,
-            baseUrl: zlibConfig?.baseUrl,
-            user_id: userId,
-            user_key: userKey
-          }),
-          signal: AbortSignal.timeout(10000)
-        });
-        const data = await zRes.json();
-        
-        if (data.error) throw new Error(data.error.message || data.error);
-        if (data.download_link) {
-          const m = [{ url: data.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }];
-          setMirrors(m);
-          hadUsableMirrors = true;
-          if (autoDownload) setTimeout(() => handleAutoDownload(m), 50);
-        } else if (data.file && data.file.download_link) {
-          const m = [{ url: data.file.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }];
-          setMirrors(m);
-          hadUsableMirrors = true;
-          if (autoDownload) setTimeout(() => handleAutoDownload(m), 50);
-        } else {
-          setMirrorError("No download link found for this book.");
-        }
-      } else {
+      {
         const instant = buildInstantMirrors(activeVariant);
         if (instant.length > 0) {
           const sortedInstant = sortMirrors(instant);
@@ -3071,17 +2795,7 @@ function DiscoverView({
 
       // Z-Library mirrors are now proxied through /api/proxy-file like any
       // other Rave-sourced link (the dedicated /api/zlib/download was removed).
-      if (false && mirror.sourceId === "zlib") {
-        response = await fetch(`/api/zlib/download`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            download_url: mirror.url,
-            user_id: mirror.zlibUserId,
-            user_key: mirror.zlibUserKey
-          })
-        });
-      } else {
+      {
         const proxyUrl = proxyUrlForMirror(sourceMirrorUrl);
         setDownloadProgress({ step: "downloading", percent: 30, error: null });
         response = await fetch(proxyUrl);
@@ -4036,7 +3750,7 @@ function DiscoverView({
                       </div>
                     )}
 
-                    <BookRatingBadge book={book} />
+                    <DiscoverRatingBadge book={book} />
                   </div>
 
                   <div className="space-y-0.5">
@@ -4247,7 +3961,7 @@ function DiscoverView({
                           className="group cursor-pointer space-y-2 p-1 sm:p-1.5 rounded-2xl transition-all border border-transparent hover:bg-kindle-card/50"
                         >
                           <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm">
-                            <BookRatingBadge book={book} />
+                            <DiscoverRatingBadge book={book} />
                             {!hideCovers && book.coverUrl ? (
                               <img loading="lazy" decoding="async"
                                 src={getAudiobookCoverSrc(book.coverUrl) || book.coverUrl}
@@ -4280,7 +3994,7 @@ function DiscoverView({
                         className="flex-shrink-0 w-28 sm:w-36 space-y-2 cursor-pointer group snap-start snap-carousel-item"
                       >
                         <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500 gpu-image-card">
-                          <BookRatingBadge book={book} />
+                          <DiscoverRatingBadge book={book} />
                           {!hideCovers && book.coverUrl ? (
                             <img loading="lazy" decoding="async"
                               src={

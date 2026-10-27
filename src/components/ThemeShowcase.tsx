@@ -286,7 +286,7 @@ export default function ThemeShowcase() {
         </div>
 
         {/* Live Reader Canvas Frame */}
-        <div className="relative rounded-2xl overflow-hidden shadow-inner border transition-all duration-500" style={{ borderColor: activeTheme.border }}>
+        <div className="relative flex h-[360px] flex-col overflow-hidden rounded-2xl border shadow-inner sm:h-[420px]" style={{ borderColor: activeTheme.border }}>
           {/* Simulated Reader Header Bar */}
           <motion.div
             animate={{
@@ -295,7 +295,7 @@ export default function ThemeShowcase() {
               borderColor: activeTheme.border
             }}
             transition={{ duration: 0.5 }}
-            className="px-6 py-3 border-b flex items-center justify-between text-xs font-bold font-sans select-none"
+            className="flex h-12 shrink-0 items-center justify-between border-b px-4 sm:px-6 text-xs font-bold font-sans select-none"
           >
             <div className="flex items-center gap-2">
               <span className={`px-2 py-0.5 rounded text-[10px] font-mono ${activeTheme.badgeBg}`}>
@@ -318,9 +318,9 @@ export default function ThemeShowcase() {
               color: activeTheme.text
             }}
             transition={{ duration: 0.5 }}
-            className="p-8 sm:p-12 min-h-[290px] flex flex-col justify-between space-y-6"
+            className="flex min-h-0 flex-1 flex-col justify-between gap-4 overflow-hidden p-5 sm:gap-6 sm:p-9"
           >
-            <div className="space-y-4">
+            <div className="min-h-0 space-y-4 overflow-hidden">
               <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: activeTheme.border }}>
                 <span className="text-xs font-bold uppercase tracking-widest opacity-60">
                   {activeExcerpt.author}
@@ -347,7 +347,7 @@ export default function ThemeShowcase() {
                     }px`,
                     lineHeight: lineHeight
                   }}
-                  className={`${activeFont.value} tracking-normal text-justify select-text leading-relaxed`}
+                  className={`${activeFont.value} line-clamp-7 tracking-normal text-justify select-text leading-relaxed sm:line-clamp-8`}
                 >
                   {activeExcerpt.text}
                 </motion.div>
@@ -431,7 +431,7 @@ export default function ThemeShowcase() {
           key={activeTheme.id}
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-5 bg-kindle-bg border border-kindle-border rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+          className="min-h-[152px] p-5 bg-kindle-bg border border-kindle-border rounded-2xl flex flex-col sm:min-h-[112px] sm:flex-row items-start sm:items-center justify-between gap-4"
         >
           <div className="space-y-1">
             <div className="flex items-center gap-2">

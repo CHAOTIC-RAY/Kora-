@@ -273,7 +273,11 @@ export default function KoraWordmarkReveal({
         running = false;
         finished = true;
         markDone();
-        if (loop && !reduceMotion) loopTimer = window.setTimeout(start, 1200);
+        if (loop && !reduceMotion) {
+          loopTimer = window.setTimeout(() => {
+            if (visible) start();
+          }, 1200);
+        }
         return;
       }
       draw(t);
@@ -350,6 +354,11 @@ export default function KoraWordmarkReveal({
           }
         } else if (!e.isIntersecting && visible) {
           visible = false;
+          if (loop) {
+            if (loopTimer !== undefined) window.clearTimeout(loopTimer);
+            loopTimer = undefined;
+            replayArmed = true;
+          }
         }
       }, { threshold: 0.2 });
       io.observe(wrap);

@@ -12,7 +12,7 @@
   ![Vite](https://img.shields.io/badge/Vite-6-27272A?style=flat-square&logo=vite)
   ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-27272A?style=flat-square&logo=cloudflare)
 
-  A reading and content workspace for ebooks, audiobooks, news, comics, and word games.
+  A reading and content workspace for ebooks, audiobooks, news, discovery, plugins, and word games.
 
   [Live app](https://kora.chaoticstudio.workers.dev) · [Documentation](https://chaotic-ray.github.io/Kora-/) · [Report a bug](https://github.com/CHAOTIC-RAY/Kora-/issues) · [Discussions](https://github.com/CHAOTIC-RAY/Kora-/discussions)
 
@@ -26,13 +26,13 @@ Kora brings reading, listening, discovery, and lightweight games into one interf
 
 | Area | Capabilities |
 |---|---|
-| **Reading** | EPUB, PDF, and text readers; reading progress; bookmarks, highlights, annotations, typography controls, themes, and in-book search where supported |
+| **Reading** | EPUB, MOBI, AZW3, PDF, and text readers; reading progress; bookmarks, highlights, annotations, typography controls, themes, and in-book search where supported |
 | **PDF workflow** | Dedicated PDF reader and PDF-to-EPUB conversion workflow when text extraction is possible; scanned/image-only PDFs may require OCR and may not convert cleanly |
 | **Library** | Local book files in IndexedDB, metadata, progress tracking, and optional cloud metadata sync |
 | **Discover** | Book metadata and covers, catalog search, duplicate reduction, book details, editions/mirrors, and source-dependent download options |
 | **Audiobooks** | Track playback, seek controls, speed, sleep and smart-skip features where supported, playback progress, minimized player, and browser text-to-speech tracks |
 | **News** | RSS feeds, article reading, feed management, and reading status |
-| **Comics and manga** | Series/chapter navigation, page gestures, zoom and pan, source plugins, and chapter/page preloading where a source supports it |
+| **Comics and manga** | Community plugin metadata can describe manga sources, but this app build does not currently include an in-app comic reader |
 | **Workshop games** | Chess against the Kora CPU or pass-and-play, Scrabble, Uno, Crossword, Word Search, and Linguist Guardian |
 | **Plugins** | Community source definitions, integrations, tools, and themes through the separate plugin registry |
 | **Sync and transfer** | Firebase Authentication/Firestore for supported user metadata; device-local book bytes; available peer-to-peer or WebDAV transfer flows |
@@ -118,7 +118,7 @@ The production Worker and the local server have overlapping responsibilities but
 - [Architecture and request flow](https://chaotic-ray.github.io/Kora-/architecture.html)
 - [Self-hosting and deployment](https://chaotic-ray.github.io/Kora-/self-hosting.html)
 - [Plugin development](https://chaotic-ray.github.io/Kora-/plugins.html)
-- [UX and codebase improvement audit](./docs/UX_AND_CODEBASE_AUDIT.md)
+- [Codebase guide](./docs/CODEBASE_GUIDE.md)
 - [Source plugin registry](https://github.com/CHAOTIC-RAY/Kora-Plugins)
 
 ## Testing and quality checks

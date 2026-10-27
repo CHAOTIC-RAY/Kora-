@@ -126,9 +126,6 @@ interface ReaderPrefs {
 }
 
 interface SearchPrefs {
-  defaultSource: string;
-  autoCacheDownloads: boolean;
-  openInNewTab: boolean;
   coverBackupProvider?: string;
 }
 
@@ -1036,15 +1033,6 @@ function SettingsView({
       </div>
     </div>
   );
-
-  const sources = [
-    { id: "all", label: "All Sources" },
-    { id: "annas", label: "Anna's Archive" },
-    { id: "libgen", label: "LibGen" },
-    { id: "zlib", label: "Z-Library" },
-    { id: "ia", label: "Archive.org" },
-    { id: "openlibrary", label: "Open Library" }
-  ];
 
   return (
     <div className="space-y-6 md:space-y-10 pb-4 md:pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
@@ -2481,18 +2469,6 @@ function SettingsView({
 
           {expandedCategories.search && (
             <div className="mt-4 pt-4 border-t border-kindle-border/40 space-y-5 animate-in slide-in-from-top-2 duration-200">
-              <div className="space-y-2.5">
-                <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Default Source</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {sources.map(s => (
-                    <button key={s.id} onClick={() => setSP({ defaultSource: s.id })}
-                      className={`py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${searchPrefs.defaultSource === s.id ? 'bg-kindle-text text-kindle-bg border-kindle-text' : 'border-kindle-border text-kindle-text-muted hover:bg-kindle-bg'}`}>
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div className="space-y-2">
                 <label htmlFor="cover-backup-provider" className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Backup Cover Provider</label>
                 <select
@@ -2509,12 +2485,6 @@ function SettingsView({
                 <p className="text-[10px] leading-relaxed text-kindle-text-muted">Used when an exact archive cover is unavailable. Other enabled catalog providers are tried afterward.</p>
               </div>
 
-              <Row title="Auto-cache Downloads" desc="Save opened books to this device automatically">
-                <Toggle on={searchPrefs.autoCacheDownloads} onClick={() => setSP({ autoCacheDownloads: !searchPrefs.autoCacheDownloads })} />
-              </Row>
-              <Row title="Open Results in New Tab" desc="Open the in-app browser in a separate tab">
-                <Toggle on={searchPrefs.openInNewTab} onClick={() => setSP({ openInNewTab: !searchPrefs.openInNewTab })} />
-              </Row>
               <Row title="Daily Motivation Reminders" desc="Get a daily quote and reading streak on open">
                 <Toggle on={dailyRemindersEnabled} onClick={() => onChangeDailyReminders?.(!dailyRemindersEnabled)} />
               </Row>

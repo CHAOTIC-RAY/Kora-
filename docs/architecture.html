@@ -472,8 +472,7 @@
         <code>src/lib/coverImage.ts</code> passes <code>data:</code>,
         <code>blob:</code> and already-local paths straight through and routes
         everything else through <code>/api/proxy-image</code>. Reader pages use
-        the same decision, so a book's cover and a comic's pages cannot disagree
-        about whether to relay.
+        the same decision, so reader assets follow one consistent relay policy.
       </p>
       <p>
         Proxy-first rather than direct-first is deliberate. On a blocked host

@@ -2520,7 +2520,7 @@ export default function InstallView() {
         </div>
 
         {/* Book discovery and playable game bento */}
-        <div className="grid grid-cols-1 gap-6 border-t border-kindle-border/60 pt-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 border-t border-kindle-border/60 pt-6">
           <Reveal className="h-full">
             <section className="flex h-full flex-col justify-between gap-5 overflow-hidden rounded-3xl border border-kindle-border bg-kindle-card p-5 sm:p-6 shadow-sm">
               <div>
@@ -2539,25 +2539,6 @@ export default function InstallView() {
             </section>
           </Reveal>
 
-          <Reveal className="h-full">
-            <section className="flex h-full flex-col justify-between gap-5 overflow-hidden rounded-3xl border border-kindle-border bg-kindle-card p-5 sm:p-6 shadow-sm">
-              <div>
-                <div className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-500"><Gamepad2 className="h-4 w-4" /> Play in Kora</div>
-                <h3 className="mt-2 text-xl font-serif font-bold text-kindle-text">Kora Uno</h3>
-                <p className="mt-2 max-w-xl text-xs leading-relaxed text-kindle-text-muted">Deal a hand and play a quick round with local bots, or join someone on your Wi-Fi network.</p>
-              </div>
-              <div className="flex min-h-28 items-center justify-center overflow-hidden rounded-2xl border border-kindle-border/60 bg-kindle-bg px-4 py-5">
-                {[{ color: "#f04452", value: "7", rotate: "-12deg", y: "8px" }, { color: "#2588ff", value: "↻", rotate: "-5deg", y: "0" }, { color: "#20b979", value: "+2", rotate: "5deg", y: "0" }, { color: "#f8c844", value: "✦", rotate: "13deg", y: "8px" }].map((card) => (
-                  <div key={card.color} className="relative -ml-4 grid h-24 w-16 shrink-0 place-items-center rounded-xl border-[3px] border-white bg-white p-1 shadow-xl first:ml-0 sm:h-28 sm:w-[4.5rem]" style={{ transform: `translateY(${card.y}) rotate(${card.rotate})`, zIndex: card.rotate === "-5deg" || card.rotate === "5deg" ? 2 : 1 }}>
-                    <div className="grid h-full w-full place-items-center rounded-lg text-2xl font-black text-white" style={{ background: card.color }}>{card.value}</div>
-                  </div>
-                ))}
-              </div>
-              <button type="button" onClick={() => setShowUnoDemo(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-kindle-text px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-kindle-bg transition hover:opacity-90">
-                <Play className="h-3.5 w-3.5 fill-current" /> Play a demo round
-              </button>
-            </section>
-          </Reveal>
         </div>
 
         {/* Kora Workshop: Interactive Tools & Games Section (Unified) */}
@@ -2582,7 +2563,7 @@ export default function InstallView() {
             </div>
           </Reveal>
 
-          {/* Grid of all 6 tools & games */}
+          {/* Interactive tools and games */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
             {/* Game 1: Linguist Guardian */}
@@ -2625,11 +2606,42 @@ export default function InstallView() {
                   <div className="mt-2 w-full">
                     <GameScoreTrackerDemo />
                   </div>
+                  <button type="button" onClick={() => setShowScoreTrackerDemo(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-kindle-border px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-kindle-text transition hover:border-[#e0533c] hover:text-[#e0533c]">
+                    <Trophy className="h-3.5 w-3.5" /> Open Score Tracker
+                  </button>
                 </div>
               </Reveal>
             </div>
 
-            {/* Game 3: Crossword Grid */}
+            {/* Game 3: Playable Kora Uno */}
+            <div className="flex flex-col">
+              <Reveal className="h-full">
+                <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 space-y-4 flex flex-col justify-between hover:border-emerald-500/30 hover:shadow-md transition-all shadow-xs h-full group">
+                  <div className="space-y-2">
+                    <div className="p-2.5 bg-emerald-500/10 text-emerald-600 rounded-xl w-fit">
+                      <Gamepad2 className="w-5 h-5" />
+                    </div>
+                    <span className="text-[9px] font-sans font-bold uppercase tracking-widest text-emerald-600">Card Game · Local Bots · Wi-Fi</span>
+                    <h4 className="text-sm font-sans font-bold text-kindle-text">Kora Uno</h4>
+                    <p className="text-xs text-kindle-text-muted leading-relaxed">
+                      Play a complete round against local bots or join friends on your Wi-Fi network.
+                    </p>
+                  </div>
+                  <div className="flex min-h-24 items-center justify-center overflow-hidden rounded-2xl border border-kindle-border/60 bg-kindle-bg px-4 py-4">
+                    {[{ color: "#f04452", value: "7", rotate: "-12deg" }, { color: "#2588ff", value: "↻", rotate: "-5deg" }, { color: "#20b979", value: "+2", rotate: "5deg" }, { color: "#f8c844", value: "✦", rotate: "13deg" }].map((card) => (
+                      <div key={card.color} className="relative -ml-3 grid h-20 w-14 shrink-0 place-items-center rounded-xl border-[3px] border-white bg-white p-1 shadow-xl first:ml-0" style={{ transform: `rotate(${card.rotate})`, zIndex: card.rotate === "-5deg" || card.rotate === "5deg" ? 2 : 1 }}>
+                        <div className="grid h-full w-full place-items-center rounded-lg text-xl font-black text-white" style={{ background: card.color }}>{card.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => setShowUnoDemo(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-kindle-text px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-kindle-bg transition hover:opacity-90">
+                    <Play className="h-3.5 w-3.5 fill-current" /> Play Kora Uno
+                  </button>
+                </div>
+              </Reveal>
+            </div>
+
+            {/* Game 4: Crossword Grid */}
             <div className="flex flex-col">
               <Reveal className="h-full">
                 <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 space-y-4 flex flex-col justify-between hover:border-kindle-accent/30 hover:shadow-md transition-all shadow-xs h-full group">
@@ -2651,7 +2663,7 @@ export default function InstallView() {
               </Reveal>
             </div>
 
-            {/* Game 4: Word Search Grid */}
+            {/* Game 5: Word Search Grid */}
             <div className="flex flex-col">
               <Reveal className="h-full">
                 <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 space-y-4 flex flex-col justify-between hover:border-emerald-500/30 hover:shadow-md transition-all shadow-xs h-full group">
@@ -2673,7 +2685,7 @@ export default function InstallView() {
               </Reveal>
             </div>
 
-            {/* Game 5: Wikipedia Hub */}
+            {/* Game 6: Wikipedia Hub */}
             <div className="flex flex-col">
               <Reveal className="h-full">
                 <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 space-y-4 flex flex-col justify-between hover:border-amber-500/30 hover:shadow-md transition-all shadow-xs h-full group">
@@ -2695,7 +2707,7 @@ export default function InstallView() {
               </Reveal>
             </div>
 
-            {/* Game 6: Searchable Dictionary */}
+            {/* Game 7: Searchable Dictionary */}
             <div className="flex flex-col">
               <Reveal className="h-full">
                 <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 space-y-4 flex flex-col justify-between hover:border-sky-500/30 hover:shadow-md transition-all shadow-xs h-full group">
@@ -2927,7 +2939,7 @@ export default function InstallView() {
               <span key={i} className="w-3 h-3 rounded-full border-2 border-kindle-border bg-kindle-bg" />
             ))}
           </div>
-          <KoraWordmarkReveal replay speed={0.75}>
+          <KoraWordmarkReveal replay loop speed={0.75}>
             <div className="relative space-y-3 max-w-lg mx-auto">
               <p className="text-base font-sans font-bold uppercase tracking-[0.25em] text-kindle-accent">
                 A Chaos Studio Project

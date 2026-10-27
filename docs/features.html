@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Features — Kora</title>
-<meta name="description" content="What Kora does: reading formats, the comic reader, the library, Discover, plugins, sending to an e-reader, Workshop tools, themes and the Android build.">
+<meta name="description" content="What Kora currently supports: reading formats, the library, Discover, plugins, sending to an e-reader, Workshop tools, themes and the Android build.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="./kora-docs.css">
@@ -40,7 +40,7 @@
     <p class="side-h">Features</p>
     <ol>
       <li><a href="#reading">Reading</a></li>
-      <li><a href="#comics">Comic reader</a></li>
+      <li><a href="#comics">Comic formats</a></li>
       <li><a href="#formats">Supported formats</a></li>
       <li><a href="#library">Library</a></li>
       <li><a href="#discover">Discover</a></li>
@@ -109,34 +109,10 @@
     </section>
 
     <section id="comics">
-      <h2><a class="anchor" href="#comics">#</a>Comic reader</h2>
-
-      <div class="feat">
-        <div class="feat-h">
-          <h3>Swipe, tap and zoom</h3>
-          <span class="where">Open a series or chapter</span>
-        </div>
-        <p>
-          Swipe to turn pages in reading order, tap the screen edges to show
-          controls, double-tap to zoom on the point you tapped, pinch to zoom
-          and drag to pan while zoomed. Pages ahead of the current one are
-          prefetched so a turn does not wait on the network, and you can step to
-          the next or previous chapter without leaving the reader.
-        </p>
-        <p class="nt"><b>Not included</b> There is no page-thumbnail scrubber; navigation is by swipe, tap zones or chapter stepping.</p>
-      </div>
-
-      <div class="feat">
-        <div class="feat-h">
-          <h3>Reading direction</h3>
-          <span class="where">Series settings</span>
-        </div>
-        <p>
-          Manga defaults to right-to-left. A right-to-left book opens on its
-          last page and pages forward towards the start of the volume, which is
-          the opposite of what a left-to-right book does. Set it per series if
-          the default is wrong for a title.
-        </p>
+      <h2><a class="anchor" href="#comics">#</a>Comic formats</h2>
+      <div class="note warn">
+        <p class="note-t">Not available in the active app</p>
+        <p>Kora currently has no in-app comic or manga reader. Plugin manifests may describe manga sources, but this build does not open comic archives or source chapters in a reader.</p>
       </div>
     </section>
 
@@ -153,13 +129,12 @@
           <thead><tr><th>Format</th><th>Extensions</th><th>Opens in</th></tr></thead>
           <tbody>
             <tr><td>EPUB</td><td><code>.epub</code></td><td>Book reader</td></tr>
-            <tr><td>Comic archive (ZIP)</td><td><code>.cbz</code>, <code>.zip</code></td><td>Comic reader</td></tr>
+            <tr><td>Comic archive (ZIP)</td><td><code>.cbz</code>, <code>.zip</code></td><td class="no">Not supported</td></tr>
             <tr><td>Comic archive (RAR)</td><td><code>.cbr</code></td><td class="no">Not yet</td></tr>
             <tr><td>Comic archive (7z)</td><td><code>.cb7</code></td><td class="no">Not yet</td></tr>
             <tr><td>PDF</td><td><code>.pdf</code></td><td>PDF reader</td></tr>
             <tr><td>Plain text</td><td><code>.txt</code></td><td>Book reader</td></tr>
-            <tr><td>Single image</td><td><code>.jpg</code>, <code>.png</code>, <code>.webp</code>, <code>.gif</code>, <code>.avif</code>, <code>.bmp</code></td><td>Comic reader, one page</td></tr>
-            <tr><td>Kindle / MOBI</td><td><code>.mobi</code>, <code>.azw3</code></td><td class="no">Not yet</td></tr>
+            <tr><td>Kindle / MOBI</td><td><code>.mobi</code>, <code>.azw3</code></td><td>Book reader</td></tr>
           </tbody>
         </table>
       </div>
@@ -173,9 +148,9 @@
           ship. The app says so rather than opening a blank page.
         </p>
         <p>
-          <strong>MOBI and AZW3</strong> are detected but have no reader. AZW3
-          is reported as MOBI because the two cannot be told apart from the
-          file's header alone.
+          <strong>Comic archives</strong> (<code>.cbz</code>, <code>.zip</code>,
+          <code>.cbr</code>, <code>.cb7</code>) and standalone image files do not
+          have an in-app reader in this build.
         </p>
         <p>
           <strong>Password-protected</strong> and <strong>split</strong>
@@ -520,8 +495,8 @@
           <caption class="sr">Not supported yet</caption>
           <thead><tr><th>Area</th><th>Not supported</th></tr></thead>
           <tbody>
-            <tr><td>Formats</td><td>MOBI and AZW3 have no reader</td></tr>
-            <tr><td>Archives</td><td>RAR (<code>.cbr</code>) and 7z (<code>.cb7</code>) comic archives are detected but cannot be opened</td></tr>
+            <tr><td>Formats</td><td>Comic archives and standalone images have no in-app reader</td></tr>
+            <tr><td>Archives</td><td>RAR (<code>.cbr</code>) and 7z (<code>.cb7</code>) archives cannot be opened</td></tr>
             <tr><td>Archives</td><td>Password-protected archives; split archives (<code>.part1.rar</code>, <code>.7z.001</code>)</td></tr>
             <tr><td>Books</td><td>DRM-protected files</td></tr>
             <tr><td>Library</td><td>Loading the library is blocked by a Firestore rules gap — <a href="./self-hosting.html#rules">see self-hosting</a></td></tr>
@@ -550,7 +525,7 @@
     <p class="toc-h">On this page</p>
     <ol>
       <li><a href="#reading">Reading</a></li>
-      <li><a href="#comics">Comic reader</a></li>
+      <li><a href="#comics">Comic formats</a></li>
       <li><a href="#formats">Supported formats</a></li>
       <li><a href="#library">Library</a></li>
       <li><a href="#discover">Discover</a></li>

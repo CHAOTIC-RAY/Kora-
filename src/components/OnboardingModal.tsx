@@ -40,7 +40,6 @@ interface OnboardingModalProps {
     fontSize: number;
     isContinuous: boolean;
     dailyGoal: number;
-    autoCache: boolean;
     dailyReminders: boolean;
     selectedFeedUrls: string[];
     countryCode: string;
@@ -259,7 +258,6 @@ export default function OnboardingModal({
   const [nickname, setNickname] = useState("");
   const [selectedArchetype, setSelectedArchetype] = useState("curator-bibliophile");
   const [dailyGoal, setDailyGoal] = useState(30);
-  const [autoCache, setAutoCache] = useState(true);
   const [dailyReminders, setDailyReminders] = useState(false);
   const [dailyBriefNotification, setDailyBriefNotification] = useState(false);
   const [agreedToLicenses, setAgreedToLicenses] = useState(false);
@@ -331,7 +329,6 @@ export default function OnboardingModal({
       fontSize: 18,
       isContinuous: false,
       dailyGoal,
-      autoCache,
       dailyReminders,
       countryCode,
       selectedFeedUrls: selectedFeedUrls.length
@@ -630,23 +627,6 @@ export default function OnboardingModal({
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label className="p-4 bg-kindle-card border border-kindle-border rounded-xl flex items-start gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={autoCache}
-                        onChange={(e) => setAutoCache(e.target.checked)}
-                        className="w-4 h-4 rounded border-kindle-border text-kindle-accent focus:ring-kindle-accent cursor-pointer shrink-0 mt-0.5"
-                      />
-                      <span>
-                        <span className="font-display font-bold text-xs text-kindle-text block">
-                          Offline Library Cache
-                        </span>
-                        <span className="text-[9px] text-kindle-text-muted leading-relaxed block mt-1">
-                          Keep books in IndexedDB so you can read without a connection.
-                        </span>
-                      </span>
-                    </label>
-
                     <label className="p-4 bg-kindle-card border border-kindle-border rounded-xl flex items-start gap-3 cursor-pointer">
                       <input
                         type="checkbox"

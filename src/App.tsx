@@ -1,3 +1,4 @@
+import { injectMetadataIntoEpub } from "./lib/epubMetadata";
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { 
   auth, 
@@ -126,91 +127,7 @@ const BASE_MOBILE_TABS = [
 
 type AppTab = "lounge" | "library" | "discover" | "feed" | "tools" | "settings";
 
-async function injectMetadataIntoEpub(
-  fileBlob: Blob,
-  title: string,
-  author: string,
-  description?: string,
-  publisher?: string,
-  year?: string
-): Promise<Blob> {
-  try {
-    const zip = await JSZip.loadAsync(fileBlob);
-    let opfPath = "";
-    
-    const containerFile = zip.file("META-INF/container.xml");
-    if (containerFile) {
-      const containerXml = await containerFile.async("text");
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(containerXml, "text/xml");
-      const rootfile = doc.querySelector("rootfile");
-      if (rootfile) {
-        opfPath = rootfile.getAttribute("full-path") || "";
-      }
-    }
-    
-    if (!opfPath) {
-      opfPath = Object.keys(zip.files).find(name => name.endsWith(".opf")) || "";
-    }
-    
-    if (opfPath) {
-      const opfFile = zip.file(opfPath);
-      if (opfFile) {
-        const opfText = await opfFile.async("text");
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(opfText, "text/xml");
-        
-        const metadataNode = doc.querySelector("metadata") || doc.querySelector("opf\\:metadata");
-        if (metadataNode) {
-          const setMetadataTag = (tagName: string, value: string, attributes?: Record<string, string>) => {
-            let el = doc.querySelector(tagName.replace(":", "\\:"));
-            if (!el) {
-              const localName = tagName.split(":").pop() || tagName;
-              el = doc.querySelector(localName);
-            }
-            if (el) {
-              el.textContent = value;
-            } else {
-              const newEl = doc.createElementNS("http://purl.org/dc/elements/1.1/", tagName);
-              newEl.textContent = value;
-              if (attributes) {
-                Object.entries(attributes).forEach(([k, v]) => newEl.setAttribute(k, v));
-              }
-              metadataNode.appendChild(newEl);
-            }
-          };
-          
-          setMetadataTag("dc:title", title);
-          setMetadataTag("dc:creator", author, { "opf:role": "aut" });
-          if (description) {
-            setMetadataTag("dc:description", description);
-          }
-          if (publisher) {
-            setMetadataTag("dc:publisher", publisher);
-          }
-          if (year) {
-            setMetadataTag("dc:date", year);
-          }
-          
-          const serializer = new XMLSerializer();
-          const updatedOpfText = serializer.serializeToString(doc);
-          zip.file(opfPath, updatedOpfText);
-          
-          const newBlob = await zip.generateAsync({ 
-            type: "blob", 
-            mimeType: "application/epub+zip",
-            compression: "DEFLATE",
-            compressionOptions: { level: 5 }
-          });
-          return newBlob;
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("Failed to inject metadata into EPUB file:", err);
-  }
-  return fileBlob;
-}
+
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: { children: React.ReactNode }) {
@@ -635,7 +552,6 @@ export default function App() {
     fontSize: number;
     isContinuous: boolean;
     dailyGoal: number;
-    autoCache: boolean;
     dailyReminders: boolean;
     dailyBriefNotification?: boolean;
     selectedFeedUrls?: string[];
@@ -661,13 +577,6 @@ export default function App() {
     localStorage.setItem("kora_reading_goal", String(prefs.dailyGoal));
     saveNewsCountry(prefs.countryCode || "");
     
-    const updatedSearch = {
-      ...searchPrefs,
-      autoCacheDownloads: prefs.autoCache
-    };
-    setSearchPrefs(updatedSearch);
-    localStorage.setItem("kora_search_prefs", JSON.stringify(updatedSearch));
-
     if (prefs.dailyBriefNotification) {
       await handleDailyNewsBriefChange(true);
     }
@@ -777,21 +686,8 @@ export default function App() {
   // Search / discovery preferences
   const [searchPrefs, setSearchPrefs] = useState(() => {
     const saved = localStorage.getItem("kora_search_prefs");
-    return saved ? JSON.parse(saved) : {
-      defaultSource: "all",
-      autoCacheDownloads: true,
-      openInNewTab: false,
+    return saved ? { coverBackupProvider: "netgalley", ...JSON.parse(saved) } : {
       coverBackupProvider: "netgalley",
-    };
-  });
-
-  const [zlibConfig, setZlibConfig] = useState(() => {
-    const saved = localStorage.getItem("kora_zlib_config");
-    return saved ? JSON.parse(saved) : {
-      baseUrl: "https://z-library.rs",
-      email: "",
-      password: "",
-      autoDiscover: true,
     };
   });
 
@@ -2379,22 +2275,12 @@ export default function App() {
   }, [user?.uid]);
 
   useEffect(() => {
-    localStorage.setItem("kora_zlib_config", JSON.stringify(zlibConfig));
-  }, [zlibConfig]);
-
-  useEffect(() => {
     localStorage.setItem("kora_reader_prefs", JSON.stringify(readerPrefs));
   }, [readerPrefs]);
 
   useEffect(() => {
     localStorage.setItem("kora_search_prefs", JSON.stringify(searchPrefs));
   }, [searchPrefs]);
-
-  // Z-Library auto-discover removed: per the Rave-only architecture, all Z-Lib
-  // access (including mirror-domain discovery) flows through Rave. The old
-  // /api/zlib/domains route was dropped, so this call 404'd. Search/download
-  // relies solely on Rave now; zlibConfig is retained for the (disabled) mirror
-  // branch in DiscoverView but no longer performs domain auto-discovery.
 
   // Sync index of locally cached books in IndexedDB (keys only — never load blobs)
   const updateCachedBookIndex = useCallback(async () => {
@@ -3367,7 +3253,6 @@ export default function App() {
           <DiscoverView
             userId={user?.uid || ""}
             books={books}
-            zlibConfig={zlibConfig}
             coverBackupProvider={searchPrefs.coverBackupProvider || "netgalley"}
             selectedBook={selectedBookForDownload}
             onSelectedBookChange={setSelectedBookForDownload}
@@ -3588,7 +3473,7 @@ export default function App() {
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
             }}
           />
-        ) : (["epub", "mobi"].includes(activeBook.extension?.toLowerCase() || "") || !activeBook.extension) ? (
+        ) : (["epub", "mobi", "azw3"].includes(activeBook.extension?.toLowerCase() || "") || !activeBook.extension) ? (
           <BookReaderEPUB
             book={activeBook}
             userId={user?.uid || ""}
@@ -3647,8 +3532,8 @@ export default function App() {
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider">Troubleshooting</p>
                     <ul className="text-[11px] text-kindle-text-muted space-y-1 ml-4 list-disc">
-                      <li>Kora natively supports <b>EPUB</b> and <b>PDF</b> formats.</li>
-                      <li>Text-based formats (TXT, MD, HTML) are supported in draft mode.</li>
+                      <li>Kora natively supports <b>EPUB</b>, <b>MOBI</b>, <b>AZW3</b>, and <b>PDF</b> formats.</li>
+                      <li>Text-based formats (TXT, MD, HTML, JSON, CSV) open in the text reader.</li>
                       <li>Try converting your file to <b>EPUB</b> using a tool like Calibre.</li>
                     </ul>
                   </div>
