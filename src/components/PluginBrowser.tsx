@@ -181,10 +181,8 @@ export default function PluginBrowser({
           // A user repo may list a source the default repo already has.
           if (seen.has(e.plugin.id)) continue;
           seen.add(e.plugin.id);
-          if (e.manifest?.category === "theme" && e.manifest.id && e.manifest.styleUrl) {
-            const existing = getInstalledExtensions().find((extension) => extension.id === e.manifest!.id);
-            attachedLegacyThemeStylesheet ||= !!existing && !existing.styleUrl;
-            attachThemeStylesheetFromRegistry(e.manifest.id, e.manifest.styleUrl);
+          if (e.manifest?.category === "theme") {
+            attachedLegacyThemeStylesheet ||= attachThemeStylesheetFromRegistry(e.manifest);
           }
           all.push(e);
         }

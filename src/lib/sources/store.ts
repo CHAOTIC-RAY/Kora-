@@ -150,23 +150,42 @@ export function uninstallExtension(id: string): void {
 }
 
 /**
- * Add a registry-hosted stylesheet to an already installed theme that predates
- * external theme CSS support. Existing token palettes and active state stay
- * intact; only a missing, HTTPS stylesheet reference is filled in.
+ * Upgrade an installed theme to its registry manifest. Theme IDs are stable
+ * across plugin packaging changes, so use them to migrate old package IDs and
+ * attach the current HTTPS stylesheet without installing a duplicate theme.
  */
-export function attachThemeStylesheetFromRegistry(id: string, styleUrl: string): void {
+export function attachThemeStylesheetFromRegistry(manifest: PluginManifest): boolean {
+  if (manifest.category !== "theme" || !manifest.themeId || !manifest.styleUrl) return false;
   let parsed: URL;
   try {
-    parsed = new URL(styleUrl);
+    parsed = new URL(manifest.styleUrl);
   } catch {
-    return;
+    return false;
   }
-  if (parsed.protocol !== "https:") return;
+  if (parsed.protocol !== "https:") return false;
   const installed = getInstalledExtensions();
-  const index = installed.findIndex((entry) => entry.id === id && entry.category === "theme");
-  if (index < 0 || installed[index]?.styleUrl) return;
-  installed[index] = { ...installed[index]!, styleUrl: parsed.href };
+  const matching = installed
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry.category === "theme" && entry.themeId === manifest.themeId);
+  if (!matching.length) return false;
+
+  const canonical = matching.find(({ entry }) => entry.id === manifest.id) ?? matching[0]!;
+  const upgraded: PluginManifest = {
+    ...canonical.entry,
+    ...manifest,
+    category: "theme",
+    styleUrl: parsed.href,
+  };
+  const next = installed.filter(
+    (entry) => entry.category !== "theme" || entry.themeId !== manifest.themeId || entry === canonical.entry
+  );
+  const nextIndex = next.findIndex((entry) => entry === canonical.entry);
+  next[nextIndex] = upgraded;
+  const changed = canonical.entry.id !== manifest.id || canonical.entry.styleUrl !== parsed.href || matching.length > 1;
+  if (!changed) return false;
+  installed.splice(0, installed.length, ...next);
   writeJSON(LS_EXT, installed);
+  return true;
 }
 
 /**
@@ -551,7 +570,8 @@ export async function fetchRegistry(
   if (!Array.isArray(list)) throw new Error("Malformed registry: no extensionList");
 
   const installedSources = new Set(getInstalledPlugins().map((p) => p.id));
-  const installedExtensions = new Set(getInstalledExtensions().map((p) => p.id));
+  const installedExtensionManifests = getInstalledExtensions();
+  const installedExtensions = new Set(installedExtensionManifests.map((p) => p.id));
   const out: RepoEntry[] = [];
 
   for (const ext of list) {
@@ -580,6 +600,12 @@ export async function fetchRegistry(
       // defaulting to "source" keeps every existing index working untouched.
       const rawCategory = (src as { category?: unknown }).category;
       const category: PluginCategory = isPluginCategory(rawCategory) ? rawCategory : "source";
+      const themeId = (src as { themeId?: string }).themeId;
+      const isInstalledExtension =
+        installedExtensions.has(id) ||
+        (category === "theme" && !!themeId && installedExtensionManifests.some(
+          (entry) => entry.category === "theme" && entry.themeId === themeId
+        ));
 
       const icon = ext.resources?.iconUrl || undefined;
       const installUrl = (ext.resources?.apkUrl as string | undefined) || "";
@@ -622,7 +648,7 @@ export async function fetchRegistry(
       out.push({
         plugin,
         installed:
-          category === "source" ? installedSources.has(id) : installedExtensions.has(id),
+          category === "source" ? installedSources.has(id) : isInstalledExtension,
         gated,
         readable,
         ...(readableNote ? { readableNote } : {}),
