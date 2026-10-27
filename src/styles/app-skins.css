@@ -1443,10 +1443,10 @@ body:is(.theme-light, .theme-light-white, .theme-light-yellow, .theme-paper, .th
   gap: 0 !important;
   justify-content: safe center;
   align-items: flex-end;
-  min-height: 184px !important;
+  min-height: 224px !important;
   /* Reserve room for lifted cards and keep the end cards inside the horizontal
      scrollport so hover/focus effects do not get cropped at the felt edge. */
-  padding: 1.75rem 1.75rem 1.8rem !important;
+  padding: 3.5rem 1.75rem 1.8rem !important;
   perspective: 900px;
   isolation: isolate;
   scrollbar-width: thin;
@@ -1490,8 +1490,8 @@ body:is(.theme-light, .theme-light-white, .theme-light-yellow, .theme-paper, .th
 
 @media (max-width: 640px) {
   .kora-game-theme .uno-hand-fan {
-    min-height: 184px !important;
-    padding: 1.75rem 1.5rem 1.8rem !important;
+    min-height: 224px !important;
+    padding: 3.5rem 1.5rem 1.8rem !important;
     scrollbar-width: none;
   }
 
@@ -1516,8 +1516,8 @@ body:is(.theme-light, .theme-light-white, .theme-light-yellow, .theme-paper, .th
   }
 
   .kora-game-theme .uno-hand-fan {
-    min-height: 144px !important;
-    padding: 1rem 1.1rem 1.25rem !important;
+    min-height: 184px !important;
+    padding: 3rem 1.1rem 1.25rem !important;
   }
 }
 

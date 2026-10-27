@@ -61,7 +61,7 @@ export interface ThemePlugin extends PluginManifest {
 const THEME_STYLESHEET_ID = "kora-active-theme-plugin-styles";
 
 function syncThemeStylesheet(theme: ThemePlugin | null, doc: Document): void {
-  const existing = doc.getElementById?.(THEME_STYLESHEET_ID) as HTMLLinkElement | null;
+  const existing = doc.getElementById?.(THEME_STYLESHEET_ID) as HTMLStyleElement | HTMLLinkElement | null;
   const href = theme?.styleUrl;
   if (!href) {
     existing?.remove();
@@ -78,13 +78,38 @@ function syncThemeStylesheet(theme: ThemePlugin | null, doc: Document): void {
     existing?.remove();
     return;
   }
-  if (existing?.href === parsed.href) return;
+  if (existing?.dataset.koraHref === parsed.href) return;
   if (!doc.head || !doc.createElement) return;
-  const link = existing ?? doc.createElement("link");
-  link.id = THEME_STYLESHEET_ID;
-  link.rel = "stylesheet";
-  link.href = parsed.href;
-  if (!existing) doc.head.appendChild(link);
+  const style = doc.createElement("style");
+  style.id = THEME_STYLESHEET_ID;
+  style.dataset.koraHref = parsed.href;
+  style.textContent = `/* Loading theme plugin: ${theme?.name ?? "theme"} */`;
+  existing?.replaceWith(style);
+  if (!existing) doc.head.appendChild(style);
+
+  // Fetch and inline the repository stylesheet so its rules reliably join
+  // Kora's cascade in webviews and deployments with strict stylesheet hosts.
+  // If CORS blocks the fetch, fall back to a regular cross-origin link.
+  void fetch(parsed.href, { cache: "force-cache" })
+    .then((response) => {
+      if (!response.ok) throw new Error(`Theme stylesheet returned ${response.status}`);
+      return response.text();
+    })
+    .then((css) => {
+      if (style.isConnected && style.dataset.koraHref === parsed.href) {
+        style.textContent = css;
+      }
+    })
+    .catch((error) => {
+      if (!style.isConnected || style.dataset.koraHref !== parsed.href) return;
+      console.warn("[themes] could not inline plugin stylesheet; using link fallback:", error);
+      const link = doc.createElement("link");
+      link.id = THEME_STYLESHEET_ID;
+      link.dataset.koraHref = parsed.href;
+      link.rel = "stylesheet";
+      link.href = parsed.href;
+      style.replaceWith(link);
+    });
 }
 
 export function isThemeManifest(m: PluginManifest): m is ThemePlugin {
