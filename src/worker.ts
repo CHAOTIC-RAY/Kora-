@@ -26,6 +26,9 @@ import { searchShadowBooks } from "./lib/shadowSources";
 import { fetchLibgenSeries, fetchSeriesCatalog } from "./lib/seriesCatalog";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
+import { handleRelayRequest, renderEreaderPage } from "./lib/relay/handler";
+import { IpRateLimiter } from "./lib/relay/rateLimit";
+import { resolveRelayStore } from "./lib/relay/store";
 import { resolveLibgenSigned } from "./lib/libgenSigned";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
 import {
@@ -324,6 +327,8 @@ export interface Env {
   RAVE_BOOK_SEARCH_URL?: string;
   /** Optional RaveBSD X-API-Key. Keep this as a Worker secret. */
   RAVE_BOOK_SEARCH_API_KEY?: string;
+  /** R2 storage for the Kindle-compatible device relay. */
+  RELAY_BUCKET?: any;
 }
 
 const FALLBACK_DOMAINS = {
@@ -481,10 +486,36 @@ async function fetchGoodreadsHtml(listQuery: string): Promise<string> {
   return fetchPageHtmlWithProxies(targetUrl, "bookTitle");
 }
 
+const relayLimiter = new IpRateLimiter();
+
 export default {
   async fetch(request: Request, env: Env, ctx: any): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
+
+    // The Kindle/Kobo receiver is a standalone, inline-only HTML page. Handle
+    // it before static-asset fallback so /send never resolves to the Kora SPA.
+    if (path === "/send" && (request.method === "GET" || request.method === "HEAD")) {
+      return new Response(request.method === "HEAD" ? null : renderEreaderPage(url.origin), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+          "Referrer-Policy": "no-referrer",
+        },
+      });
+    }
+
+    // Device relay endpoints must also execute in the Worker, not the SPA asset
+    // fallback. R2 is configured per environment in wrangler.toml.
+    if (path.startsWith("/api/relay/")) {
+      const relayResponse = await handleRelayRequest(request, env, {
+        store: resolveRelayStore(env),
+        limiter: relayLimiter,
+      });
+      if (relayResponse) return relayResponse;
+    }
 
     // Handle CORS preflights
     if (request.method === "OPTIONS") {
