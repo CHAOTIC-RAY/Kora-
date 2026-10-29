@@ -200,7 +200,7 @@ export async function convertPdfToEpub(file: File | Blob, options: PdfToEpubOpti
   // text reconstruction for pages that already have a good text layer.
   const ocrPageNumbers = pages
     .map((text, index) => ({ text, pageNo: index + 1 }))
-    .filter(({ text }) => text.trim().replace(/\\s/g, "").length < 60)
+    .filter(({ text }) => text.trim().replace(/\s/g, "").length < 60)
     .map(({ pageNo }) => pageNo);
   if (ocrPageNumbers.length) {
     try {
@@ -214,8 +214,8 @@ export async function convertPdfToEpub(file: File | Blob, options: PdfToEpubOpti
       for (const pageNo of ocrPageNumbers) {
         const recognized = ocrResult.pageTexts[pageNo - 1]?.trim() || "";
         const current = pages[pageNo - 1] || "";
-        const recognizedChars = recognized.replace(/\\s/g, "").length;
-        const currentChars = current.replace(/\\s/g, "").length;
+        const recognizedChars = recognized.replace(/\s/g, "").length;
+        const currentChars = current.replace(/\s/g, "").length;
         if (recognizedChars > currentChars && recognizedChars >= 8) pages[pageNo - 1] = recognized;
       }
     } catch (error) {
