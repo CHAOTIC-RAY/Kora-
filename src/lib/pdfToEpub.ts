@@ -5,6 +5,7 @@
  */
 import JSZip from "jszip";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
+import { recognizePdfWithOcr } from "./pdfOcr";
 
 try {
   GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
@@ -194,8 +195,41 @@ export async function convertPdfToEpub(file: File | Blob, options: PdfToEpubOpti
     }
   } finally { await pdf.destroy(); }
 
-  if (!nonEmptyPages) throw new Error("No selectable text was found. This appears to be a scanned/image-only PDF; OCR is required before it can become a readable reflowable EPUB.");
-  if (nonEmptyPages < pages.length) warnings.push(`${pages.length - nonEmptyPages} page(s) contained no extractable text and may need OCR.`);
+  // Selectively OCR pages where PDF.js found little or no usable text. This
+  // mirrors the working standalone converter while retaining Kora's positioned
+  // text reconstruction for pages that already have a good text layer.
+  const ocrPageNumbers = pages
+    .map((text, index) => ({ text, pageNo: index + 1 }))
+    .filter(({ text }) => text.trim().replace(/\\s/g, "").length < 60)
+    .map(({ pageNo }) => pageNo);
+  if (ocrPageNumbers.length) {
+    try {
+      options.onProgress?.({ stage: "reading", percent: 76 });
+      const ocrResult = await recognizePdfWithOcr(file, (progress) => {
+        options.onProgress?.({
+          stage: "reading",
+          percent: 10 + Math.round(progress.percent * 0.65),
+        });
+      }, ocrPageNumbers);
+      for (const pageNo of ocrPageNumbers) {
+        const recognized = ocrResult.pageTexts[pageNo - 1]?.trim() || "";
+        const current = pages[pageNo - 1] || "";
+        const recognizedChars = recognized.replace(/\\s/g, "").length;
+        const currentChars = current.replace(/\\s/g, "").length;
+        if (recognizedChars > currentChars && recognizedChars >= 8) pages[pageNo - 1] = recognized;
+      }
+    } catch (error) {
+      if (!nonEmptyPages) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`Kora couldn't extract text from this PDF and OCR failed: ${detail}`);
+      }
+      warnings.push("OCR could not recover every short or scanned page. The EPUB contains the text Kora could extract.");
+    }
+  }
+
+  nonEmptyPages = pages.filter((text) => text.trim()).length;
+  if (!nonEmptyPages) throw new Error("Kora couldn't extract readable text from this PDF, even with OCR. Try a clearer scan or a PDF with selectable text.");
+  if (nonEmptyPages < pages.length) warnings.push(`${pages.length - nonEmptyPages} page(s) still contained no extractable text after OCR.`);
   warnings.push("PDF page layout, images, tables, footnotes, and typography may not be preserved exactly in a reflowable EPUB.");
 
   options.onProgress?.({ stage: "building", percent: 78 });
