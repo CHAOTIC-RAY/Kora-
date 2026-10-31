@@ -88,14 +88,16 @@ export function getFeatureToggleDesc(id: FeatureToggleId): string {
 
 const KEY_GETTING_STARTED = "kora_feature_getting_started_book_enabled";
 const KEY_LOUNGE_GUIDES = "kora_feature_lounge_guides_enabled";
+/** Temporary default: Getting started walkthrough is off until re-enabled. */
+const DEFAULT_GETTING_STARTED = false;
 
 export function isGettingStartedBookEnabled(): boolean {
   try {
     const raw = localStorage.getItem(KEY_GETTING_STARTED);
-    if (raw === null) return DEFAULT_VALUE;
+    if (raw === null) return DEFAULT_GETTING_STARTED;
     return raw === "true";
   } catch {
-    return DEFAULT_VALUE;
+    return DEFAULT_GETTING_STARTED;
   }
 }
 

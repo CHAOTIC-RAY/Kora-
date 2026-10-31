@@ -6,6 +6,8 @@
  * then Discover (first download) and Read tab.
  */
 
+import { WALKTHROUGH_GUIDE_ENABLED } from "./walkthroughBook";
+
 export type GuideId =
   | "walkthrough-book"
   | "sync-setup"
@@ -469,7 +471,10 @@ export function isGuideOpenable(id: GuideId): boolean {
 /** Lounge widgets: pending guides marked loungeWidget, shuffled. */
 export function pickLoungeGuideWidgets(limit = 2): GuideDefinition[] {
   const pending = GUIDE_CATALOG.filter(
-    (g) => g.loungeWidget && getGuideStatus(g.id) === "pending"
+    (g) =>
+      g.loungeWidget &&
+      getGuideStatus(g.id) === "pending" &&
+      (g.id !== "walkthrough-book" || WALKTHROUGH_GUIDE_ENABLED)
   );
   const day = Math.floor(Date.now() / 86_400_000);
   const scored = pending.map((g, i) => {
@@ -513,6 +518,10 @@ export function clearJourney() {
 
 /** Default post-onboarding queue — guide book only; more guides come from the last chapter. */
 export function startPostOnboardingJourney() {
+  if (!WALKTHROUGH_GUIDE_ENABLED) {
+    saveJourney(null);
+    return null;
+  }
   const queue: GuideId[] = ["walkthrough-book"];
   const filtered = queue.filter((id) => getGuideStatus(id) === "pending");
   if (!filtered.length) {

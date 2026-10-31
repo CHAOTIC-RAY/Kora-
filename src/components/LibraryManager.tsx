@@ -6,6 +6,7 @@ import { inferBookTags } from "../lib/tagsHelper";
 import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass, Share2, FileText, Sparkles, PenTool, ArrowLeft, Globe, Download } from "lucide-react";
 import {
   WALKTHROUGH_BOOK_ID,
+  WALKTHROUGH_GUIDE_ENABLED,
   hideWalkthroughBookFromLibrary,
   isWalkthroughBook,
   isWalkthroughBookHidden,
@@ -1597,7 +1598,7 @@ function LibraryManager({
         </div>
       )}
 
-      {walkthroughHidden && (
+      {WALKTHROUGH_GUIDE_ENABLED && walkthroughHidden && (
         <div className="w-full rounded-xl border border-kindle-border bg-kindle-card/80 px-3 py-2.5 flex items-center justify-between gap-3">
           <p className="text-[11px] text-kindle-text-muted font-sans leading-snug">
             Getting started book is hidden from your shelf.

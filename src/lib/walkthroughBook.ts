@@ -8,6 +8,12 @@ import { buildEpubFromText } from "./epubTools";
 import { syncBookToCloud, getLocalLibrary, type BookMetadata } from "./firebase";
 import { storeBookFile, getBookFile } from "../db/indexedDB";
 
+/**
+ * Temporary ship kill switch for the quick-start walkthrough (shelf book +
+ * post-onboarding spotlight). Set to `true` to restore.
+ */
+export const WALKTHROUGH_GUIDE_ENABLED = false;
+
 export const WALKTHROUGH_BOOK_ID = "kora-walkthrough-guide";
 export const WALKTHROUGH_BOOK_TITLE = "Getting started with Kora";
 /** Bump to rebuild EPUB for users who already have an older copy */
@@ -163,6 +169,7 @@ function buildMetadata(): BookMetadata {
 }
 
 export function isWalkthroughBookHidden(): boolean {
+  if (!WALKTHROUGH_GUIDE_ENABLED) return true;
   try {
     return localStorage.getItem(HIDDEN_KEY) === "true";
   } catch {
@@ -217,6 +224,9 @@ function setStoredContentVersion(v: number) {
 
 /** Ensure the walkthrough EPUB exists in library + IndexedDB. Returns metadata. */
 export async function ensureWalkthroughBook(userId: string): Promise<BookMetadata> {
+  if (!WALKTHROUGH_GUIDE_ENABLED) {
+    return buildMetadata();
+  }
   const existingMeta = getLocalLibrary().find((b) => b.id === WALKTHROUGH_BOOK_ID);
   const cached = await getBookFile(WALKTHROUGH_BOOK_ID);
   const needsRebuild = !cached?.blob || storedContentVersion() < WALKTHROUGH_CONTENT_VERSION;
@@ -272,6 +282,9 @@ export function hideWalkthroughBookFromLibrary() {
 
 /** Un-hide and ensure the book is seeded. */
 export async function showWalkthroughBookInLibrary(userId: string): Promise<BookMetadata> {
+  if (!WALKTHROUGH_GUIDE_ENABLED) {
+    return buildMetadata();
+  }
   setWalkthroughBookHidden(false);
   return ensureWalkthroughBook(userId);
 }

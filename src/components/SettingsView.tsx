@@ -53,7 +53,7 @@ import { storeBookFile } from "../db/indexedDB";
 import { deleteBookFile } from "../db/indexedDB";
 import { deleteAudiobookTracks } from "../lib/audiobookStorage";
 import { clearAudiobookSyncQueue } from "../lib/audiobookSyncQueue";
-import { WALKTHROUGH_BOOK_ID } from "../lib/walkthroughBook";
+import { WALKTHROUGH_BOOK_ID, WALKTHROUGH_GUIDE_ENABLED } from "../lib/walkthroughBook";
 import { APP_VERSION } from "../lib/appVersion";
 import { inferBookTags } from "../lib/tagsHelper";
 import {
@@ -284,7 +284,7 @@ function SettingsView({
   onChangeDiscoverTabEnabled,
   soundEffectsEnabled = true,
   onChangeSoundEffectsEnabled,
-  gettingStartedBookEnabled = true,
+  gettingStartedBookEnabled = false,
   onChangeGettingStartedBookEnabled,
   loungeGuidesEnabled = true,
   onChangeLoungeGuidesEnabled,
@@ -2443,9 +2443,11 @@ function SettingsView({
                 <Toggle on={soundEffectsEnabled} onClick={() => onChangeSoundEffectsEnabled?.(!soundEffectsEnabled)} />
               </Row>
 
-              <Row title="Getting Started Book" desc="Hide the Kora guide book from your library shelf">
-                <Toggle on={gettingStartedBookEnabled} onClick={() => onChangeGettingStartedBookEnabled?.(!gettingStartedBookEnabled)} />
-              </Row>
+              {WALKTHROUGH_GUIDE_ENABLED && (
+                <Row title="Getting Started Book" desc="Hide the Kora guide book from your library shelf">
+                  <Toggle on={gettingStartedBookEnabled} onClick={() => onChangeGettingStartedBookEnabled?.(!gettingStartedBookEnabled)} />
+                </Row>
+              )}
 
               <Row title="Lounge Guides" desc="Hide the Guides widget from the Lounge home screen">
                 <Toggle on={loungeGuidesEnabled} onClick={() => onChangeLoungeGuidesEnabled?.(!loungeGuidesEnabled)} />

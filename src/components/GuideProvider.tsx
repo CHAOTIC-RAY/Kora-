@@ -23,6 +23,7 @@ import {
   type GuideStepLink,
   type JourneyState,
 } from "../lib/guides";
+import { WALKTHROUGH_GUIDE_ENABLED } from "../lib/walkthroughBook";
 import GuideSpotlight from "./GuideSpotlight";
 
 type AppTab = "lounge" | "library" | "discover" | "feed" | "tools" | "settings";
@@ -68,11 +69,25 @@ type GuideProviderProps = {
 
 export function GuideProvider({ children, onSwitchTab, paused = false }: GuideProviderProps) {
   const [active, setActive] = useState<ActiveSession | null>(null);
-  const [journey, setJourney] = useState<JourneyState | null>(() => loadJourney());
+  const [journey, setJourney] = useState<JourneyState | null>(() => {
+    if (!WALKTHROUGH_GUIDE_ENABLED) {
+      clearJourney();
+      return null;
+    }
+    return loadJourney();
+  });
 
   const currentGuide = active ? getGuide(active.guideId) || null : null;
   const currentStep =
     currentGuide && active ? currentGuide.steps[active.stepIndex] || null : null;
+
+  // Drop walkthrough spotlight/journey while the feature is temporarily off.
+  useEffect(() => {
+    if (WALKTHROUGH_GUIDE_ENABLED) return;
+    clearJourney();
+    setJourney(null);
+    setActive((prev) => (prev?.guideId === "walkthrough-book" ? null : prev));
+  }, []);
 
   // Older builds may leave an out-of-range stepIndex after catalog shrinks.
   useEffect(() => {
@@ -123,6 +138,7 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
 
   const startGuide = useCallback(
     (id: GuideId, opts?: { force?: boolean; stepIndex?: number }) => {
+      if (id === "walkthrough-book" && !WALKTHROUGH_GUIDE_ENABLED) return;
       const def = getGuide(id);
       if (!def?.steps.length) return;
       if (!opts?.force && getGuideStatus(id) !== "pending") return;

@@ -30,7 +30,7 @@ const LoungeView = lazy(() => import("./components/LoungeView"));
 const WikipediaWidget = lazy(() => import("./components/WikipediaWidget"));
 import { GuideProvider } from "./components/GuideProvider";
 import { emitGuideEvent } from "./lib/guides";
-import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden } from "./lib/walkthroughBook";
+import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden, WALKTHROUGH_GUIDE_ENABLED } from "./lib/walkthroughBook";
 import { canHydrateBook } from "./lib/crossDeviceSync";
 import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
 const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
@@ -591,22 +591,27 @@ export default function App() {
     localStorage.setItem("kora_first_book_nudge", "true");
     setShowFirstBookNudge(true);
 
-    // Seed the interactive walkthrough book onto the shelf, then land in Library.
-    try {
-      await ensureWalkthroughBook(user?.uid || "");
-      await refreshLibrary(user?.uid || "");
-      await updateCachedBookIndex();
-    } catch (err) {
-      console.warn("Failed to seed walkthrough book", err);
-    }
+    if (WALKTHROUGH_GUIDE_ENABLED) {
+      // Seed the interactive walkthrough book onto the shelf, then land in Library.
+      try {
+        await ensureWalkthroughBook(user?.uid || "");
+        await refreshLibrary(user?.uid || "");
+        await updateCachedBookIndex();
+      } catch (err) {
+        console.warn("Failed to seed walkthrough book", err);
+      }
 
-    switchTab("library");
-    toast.success(
-      `Welcome, ${prefs.nickname}! Tap Getting started with Kora on your shelf — the guide book will walk you through Kora.`
-    );
-    window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id: "walkthrough-book" } }));
-    }, 700);
+      switchTab("library");
+      toast.success(
+        `Welcome, ${prefs.nickname}! Tap Getting started with Kora on your shelf — the guide book will walk you through Kora.`
+      );
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id: "walkthrough-book" } }));
+      }, 700);
+    } else {
+      switchTab("library");
+      toast.success(`Welcome, ${prefs.nickname}!`);
+    }
   };
 
   // Reader / reading preferences (persisted, consumed by BookReaderEPUB on open)
