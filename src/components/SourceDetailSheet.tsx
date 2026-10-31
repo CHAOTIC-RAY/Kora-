@@ -8,7 +8,7 @@
  * from a name in a list.
  */
 
-import { X, ExternalLink, ShieldAlert, Download, Check, Trash2, Puzzle, Globe, Info, Loader2, ImageOff } from "lucide-react";
+import { X, ExternalLink, ShieldAlert, Download, Check, Trash2, Puzzle, Globe, Info, Loader2, ImageOff, BookOpen } from "lucide-react";
 import type { SourcePlugin } from "../lib/sources/types";
 
 export interface SourceDetailProps {
@@ -29,6 +29,8 @@ export interface SourceDetailProps {
   onUninstall: () => void;
   onToggleAllow: () => void;
   onClose: () => void;
+  /** Open the in-app manga/comic browse + reader for this installed source. */
+  onBrowse?: () => void;
 }
 
 /**
@@ -74,6 +76,7 @@ export function SourceDetail({
   onUninstall,
   onToggleAllow,
   onClose,
+  onBrowse,
 }: SourceDetailProps) {
   const restricted = plugin.piracy || plugin.nsfw;
   // Explicit `false` and nothing else. An absent verdict means the registry
@@ -305,6 +308,14 @@ export function SourceDetail({
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {installed ? (
               <>
+                {onBrowse && !unreadable && (active || !restricted) && (
+                  <button
+                    onClick={onBrowse}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-kindle-accent px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-kindle-bg hover:opacity-90 transition"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" /> Browse &amp; read
+                  </button>
+                )}
                 <button
                   onClick={onUninstall}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-kindle-border px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-red-500 hover:border-red-500/40 transition"

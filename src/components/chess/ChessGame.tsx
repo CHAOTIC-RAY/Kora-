@@ -854,47 +854,53 @@ export default function ChessGame({
           transition={{ duration: 0.2 }}
           className="w-full h-full sm:max-w-4xl sm:max-h-[96vh] bg-kindle-bg border-0 sm:border-2 border-kindle-border rounded-none sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden text-kindle-text"
         >
-          {/* Header Bar */}
-          <div className="border-b-2 border-kindle-border shrink-0 bg-kindle-card kora-safe-top">
-            <div className="px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400">
-                  <Crown className="w-5 h-5" />
+          {/* Header Bar — compact on mobile so the board keeps the viewport */}
+          <div className="border-b border-kindle-border shrink-0 bg-kindle-card kora-safe-top">
+            <div className="px-2.5 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 shrink-0">
+                  <Crown className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h2 className="font-serif font-bold text-base leading-tight text-kindle-text">
+                <div className="min-w-0">
+                  <h2 className="font-serif font-bold text-sm sm:text-base leading-tight text-kindle-text truncate">
                     Kora Chess
                   </h2>
-                  <p className="text-[10px] uppercase tracking-wider text-kindle-text-muted">
-                    {gameMode === "vs-kora" ? "VS Kora (Smarter Depth-3 AI)" : "Pass & Play (2 Player)"}
+                  <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-kindle-text-muted truncate">
+                    {gameMode === "vs-kora" ? "VS Kora" : "Pass & Play"}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowMethods(true)}
-                  className="px-2.5 py-1.5 rounded-lg border border-kindle-border hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold text-kindle-accent flex items-center gap-1 transition"
+                  className="p-2 sm:px-2.5 sm:py-1.5 rounded-lg border border-kindle-border hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold text-kindle-accent flex items-center gap-1 transition"
                   title="Learn Chess Methods & Lessons"
+                  aria-label="Learn methods"
                 >
-                  <BookOpen className="w-3.5 h-3.5" /> Learn Methods
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Learn</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowTips(true)}
-                  className="px-2.5 py-1.5 rounded-lg border border-kindle-border hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold text-amber-600 flex items-center gap-1 transition"
+                  className="p-2 sm:px-2.5 sm:py-1.5 rounded-lg border border-kindle-border hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold text-amber-600 flex items-center gap-1 transition"
                   title="GPU & Strategy Tips"
+                  aria-label="Tips"
                 >
-                  <Lightbulb className="w-3.5 h-3.5" /> Tips
+                  <Lightbulb className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Tips</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowMatchRecap(true)}
-                  className="px-2.5 py-1.5 rounded-lg border border-kindle-border hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold text-kindle-accent flex items-center gap-1 transition"
+                  className="p-2 sm:px-2.5 sm:py-1.5 rounded-lg border border-kindle-border hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold text-kindle-accent flex items-center gap-1 transition"
                   title="Match Recap & Insights"
+                  aria-label="Match recap"
                 >
-                  <Trophy className="w-3.5 h-3.5" /> Recap
+                  <Trophy className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Recap</span>
                 </button>
                 <button
                   type="button"
@@ -908,22 +914,21 @@ export default function ChessGame({
             </div>
 
             {/* Mode Selector Subheader */}
-            <div className="px-4 py-2 bg-kindle-bg/60 border-t border-kindle-border flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] uppercase font-bold text-kindle-text-muted">Mode:</span>
+            <div className="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-kindle-bg/60 border-t border-kindle-border flex items-center justify-between gap-2 text-xs overflow-x-auto">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
                     setGameMode("vs-kora");
                     startNewGame();
                   }}
-                  className={`px-3 py-1 rounded-lg font-bold transition flex items-center gap-1 ${
+                  className={`px-2.5 sm:px-3 py-1 rounded-lg font-bold transition flex items-center gap-1 ${
                     gameMode === "vs-kora"
                       ? "bg-amber-600 text-white shadow-xs"
                       : "bg-kindle-card border border-kindle-border text-kindle-text"
                   }`}
                 >
-                  <Cpu className="w-3.5 h-3.5" /> VS Kora
+                  <Cpu className="w-3.5 h-3.5" /> <span className="sm:hidden">AI</span><span className="hidden sm:inline">VS Kora</span>
                 </button>
                 <button
                   type="button"
@@ -931,19 +936,18 @@ export default function ChessGame({
                     setGameMode("pass-and-play");
                     startNewGame();
                   }}
-                  className={`px-3 py-1 rounded-lg font-bold transition flex items-center gap-1 ${
+                  className={`px-2.5 sm:px-3 py-1 rounded-lg font-bold transition flex items-center gap-1 ${
                     gameMode === "pass-and-play"
                       ? "bg-amber-600 text-white shadow-xs"
                       : "bg-kindle-card border border-kindle-border text-kindle-text"
                   }`}
                 >
-                  <Users className="w-3.5 h-3.5" /> Pass & Play
+                  <Users className="w-3.5 h-3.5" /> <span className="sm:hidden">2P</span><span className="hidden sm:inline">Pass & Play</span>
                 </button>
               </div>
 
               {gameMode === "vs-kora" && (
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase font-bold text-kindle-text-muted">Play as:</span>
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => {
@@ -951,7 +955,7 @@ export default function ChessGame({
                       setFlipped(false);
                       startNewGame();
                     }}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                    className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition ${
                       playerColor === "white"
                         ? "bg-kindle-accent text-kindle-bg"
                         : "bg-kindle-card border border-kindle-border text-kindle-text"
@@ -966,7 +970,7 @@ export default function ChessGame({
                       setFlipped(true);
                       startNewGame();
                     }}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                    className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition ${
                       playerColor === "black"
                         ? "bg-kindle-accent text-kindle-bg"
                         : "bg-kindle-card border border-kindle-border text-kindle-text"
@@ -979,8 +983,8 @@ export default function ChessGame({
             </div>
           </div>
 
-          {/* Main Board Container */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-6 flex flex-col items-center justify-center gap-3">
+          {/* Main Board Container — prioritize board size on small screens */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 sm:p-6 flex flex-col items-center justify-start sm:justify-center gap-1.5 sm:gap-3">
             {/* Famous Move Notification Banner */}
             <AnimatePresence>
               {famousMoveMatch && (
@@ -988,25 +992,26 @@ export default function ChessGame({
                   initial={{ opacity: 0, y: -10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="w-full max-w-xl p-3 rounded-2xl bg-amber-500/15 border-2 border-amber-500/40 shadow-lg flex items-center justify-between text-xs"
+                  className="w-full max-w-xl p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-amber-500/15 border border-amber-500/40 sm:border-2 shadow-lg flex items-center justify-between text-xs gap-2"
                 >
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-xl bg-amber-500 text-white shadow-md">
-                      <Award className="w-4 h-4" />
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-amber-500 text-white shadow-md shrink-0">
+                      <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </div>
-                    <div>
-                      <p className="font-serif font-bold text-amber-700 dark:text-amber-300 text-sm">
-                        ⭐ Famous Opening: {famousMoveMatch.name}
+                    <div className="min-w-0">
+                      <p className="font-serif font-bold text-amber-700 dark:text-amber-300 text-xs sm:text-sm truncate">
+                        {famousMoveMatch.name}
                       </p>
-                      <p className="text-[10px] text-kindle-text-muted">
-                        Created by <span className="font-semibold text-kindle-text">{famousMoveMatch.creator}</span> — {famousMoveMatch.description}
+                      <p className="text-[10px] text-kindle-text-muted line-clamp-1 sm:line-clamp-2">
+                        <span className="font-semibold text-kindle-text">{famousMoveMatch.creator}</span>
+                        <span className="hidden sm:inline"> — {famousMoveMatch.description}</span>
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setFamousMoveMatch(null)}
-                    className="p-1 rounded-lg hover:bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                    className="p-1 rounded-lg hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1015,44 +1020,44 @@ export default function ChessGame({
             </AnimatePresence>
 
             {/* Status Indicator Bar */}
-            <div className="w-full max-w-xl flex items-center justify-between px-3 py-2 rounded-xl bg-kindle-card border border-kindle-border text-xs font-bold">
-              <div className="flex items-center gap-2">
+            <div className="w-full max-w-xl flex items-center justify-between px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-kindle-card border border-kindle-border text-[11px] sm:text-xs font-bold">
+              <div className="flex items-center gap-2 min-w-0">
                 <span
-                  className={`w-3 h-3 rounded-full animate-pulse ${
+                  className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full animate-pulse shrink-0 ${
                     currentTurn === "white" ? "bg-amber-100 border border-neutral-400" : "bg-neutral-900"
                   }`}
                 />
-                <span className="text-kindle-text">
+                <span className="text-kindle-text truncate">
                   {gameOverResult
                     ? gameOverResult
                     : isBotThinking
-                    ? "Kora AI is thinking (Depth-3)..."
-                    : `${currentTurn === "white" ? "White" : "Black"}'s Turn ${currentInCheck ? "(CHECK!)" : ""}`}
+                    ? "Kora thinking…"
+                    : `${currentTurn === "white" ? "White" : "Black"}'s turn${currentInCheck ? " — check" : ""}`}
                 </span>
               </div>
               {isBotThinking && (
-                <div className="flex items-center gap-1.5 text-amber-600 animate-pulse">
-                  <Cpu className="w-4 h-4" /> Analyzing 3-ply...
+                <div className="hidden sm:flex items-center gap-1.5 text-amber-600 animate-pulse shrink-0">
+                  <Cpu className="w-4 h-4" /> Analyzing…
                 </div>
               )}
             </div>
 
             {/* Captured Pieces (White's losses) */}
-            <div className="w-full max-w-xl flex items-center justify-between px-2 text-xs">
-              <div className="flex items-center gap-1 min-h-[24px]">
-                <span className="text-[10px] font-bold uppercase text-kindle-text-muted mr-1">
-                  Captured:
+            <div className="w-full max-w-xl flex items-center justify-between px-1 sm:px-2 text-xs">
+              <div className="flex items-center gap-0.5 sm:gap-1 min-h-[20px] sm:min-h-[24px] overflow-x-auto">
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase text-kindle-text-muted mr-1 shrink-0">
+                  Taken
                 </span>
                 {capturedWhite.map((type, idx) => (
-                  <div key={idx} className="w-5 h-5 shrink-0 opacity-80">
+                  <div key={idx} className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 opacity-80">
                     <ChessPieceIcon type={type} color="white" />
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Chessboard Grid (8x8) */}
-            <div className="relative w-full max-w-[400px] aspect-square bg-kindle-card p-2 sm:p-3 rounded-2xl border-2 border-kindle-border shadow-2xl flex flex-col">
+            {/* Chessboard Grid (8x8) — fill available width on phones */}
+            <div className="relative w-full max-w-[min(100%,92vw,520px)] sm:max-w-[400px] aspect-square bg-kindle-card p-1 sm:p-3 rounded-xl sm:rounded-2xl border border-kindle-border sm:border-2 shadow-lg sm:shadow-2xl flex flex-col">
               <div className="w-full h-full grid grid-cols-8 grid-rows-8 rounded-xl overflow-hidden border border-kindle-border shadow-inner">
                 {displayRanks.map((r) =>
                   displayFiles.map((f) => {
@@ -1115,54 +1120,47 @@ export default function ChessGame({
             </div>
 
             {/* Captured Pieces (Black's losses) */}
-            <div className="w-full max-w-xl flex items-center justify-between px-2 text-xs">
-              <div className="flex items-center gap-1 min-h-[24px]">
-                <span className="text-[10px] font-bold uppercase text-kindle-text-muted mr-1">
-                  Captured:
+            <div className="w-full max-w-xl flex items-center justify-between px-1 sm:px-2 text-xs">
+              <div className="flex items-center gap-0.5 sm:gap-1 min-h-[20px] sm:min-h-[24px] overflow-x-auto">
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase text-kindle-text-muted mr-1 shrink-0">
+                  Taken
                 </span>
                 {capturedBlack.map((type, idx) => (
-                  <div key={idx} className="w-5 h-5 shrink-0 opacity-80">
+                  <div key={idx} className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 opacity-80">
                     <ChessPieceIcon type={type} color="black" />
                   </div>
                 ))}
               </div>
               {moveHistory.length > 0 && (
-                <span className="text-[11px] font-mono text-kindle-text-muted">
-                  Moves: {Math.ceil(moveHistory.length / 2)}
+                <span className="text-[10px] sm:text-[11px] font-mono text-kindle-text-muted shrink-0">
+                  {Math.ceil(moveHistory.length / 2)}
                 </span>
               )}
             </div>
 
             {/* Bottom Actions Bar */}
-            <div className="w-full max-w-xl flex flex-wrap items-center justify-center gap-2 pt-2 border-t border-kindle-border">
+            <div className="w-full max-w-xl flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 pt-1.5 sm:pt-2 border-t border-kindle-border kora-safe-bottom">
               <button
                 type="button"
                 onClick={startNewGame}
-                className="px-3.5 py-2 rounded-xl bg-kindle-card border border-kindle-border hover:border-amber-500/50 text-kindle-text font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-xs"
+                className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-kindle-card border border-kindle-border hover:border-amber-500/50 text-kindle-text font-bold text-[11px] sm:text-xs flex items-center gap-1 sm:gap-1.5 transition active:scale-95 shadow-xs"
               >
-                <RefreshCw className="w-3.5 h-3.5 text-amber-600" /> New Game
+                <RefreshCw className="w-3.5 h-3.5 text-amber-600" /> New
               </button>
               <button
                 type="button"
                 onClick={() => setFlipped(!flipped)}
-                className="px-3.5 py-2 rounded-xl bg-kindle-card border border-kindle-border hover:border-amber-500/50 text-kindle-text font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-xs"
+                className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-kindle-card border border-kindle-border hover:border-amber-500/50 text-kindle-text font-bold text-[11px] sm:text-xs flex items-center gap-1 sm:gap-1.5 transition active:scale-95 shadow-xs"
               >
-                <ArrowUpDown className="w-3.5 h-3.5 text-amber-600" /> Flip Board
+                <ArrowUpDown className="w-3.5 h-3.5 text-amber-600" /> Flip
               </button>
               <button
                 type="button"
                 onClick={handleUndo}
                 disabled={moveHistory.length === 0 || isBotThinking}
-                className="px-3.5 py-2 rounded-xl bg-kindle-card border border-kindle-border hover:border-amber-500/50 text-kindle-text font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-kindle-card border border-kindle-border hover:border-amber-500/50 text-kindle-text font-bold text-[11px] sm:text-xs flex items-center gap-1 sm:gap-1.5 transition active:scale-95 shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-amber-600" /> Undo
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowMatchRecap(true)}
-                className="px-3.5 py-2 rounded-xl bg-kindle-card border border-kindle-border hover:border-kindle-accent/50 text-kindle-text font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-xs"
-              >
-                <Trophy className="w-3.5 h-3.5 text-kindle-accent" /> Match Recap
               </button>
             </div>
           </div>

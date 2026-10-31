@@ -19,6 +19,7 @@ import { logger } from "../lib/logger";
 import { escapeHtml } from "../lib/relay/sanitize";
 import KoraLoading from "./KoraLoading";
 import SourcePluginsHub from "./SourcePluginsHub";
+import ComicDetailView from "./ComicDetailView";
 import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "../lib/audiobookDetailClient";
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
@@ -356,6 +357,8 @@ function DiscoverView({
   const [showAllEditions, setShowAllEditions] = useState(false);
   const [loadingFeaturedDownloads, setLoadingFeaturedDownloads] = useState<boolean>(false);
   const [selectedFeaturedVariant, setSelectedFeaturedVariant] = useState<any | null>(null);
+  /** Manga/comic plugin series — chapter reader, not the ebook download sheet. */
+  const [comicBook, setComicBook] = useState<any | null>(null);
   const [featuredMirrors, setFeaturedMirrors] = useState<any[]>([]);
   const [fetchingFeaturedMirrors, setFetchingFeaturedMirrors] = useState<boolean>(false);
   const [featuredMirrorError, setFeaturedMirrorError] = useState<string | null>(null);
@@ -542,15 +545,18 @@ function DiscoverView({
     };
     const FORMATS = ["epub", "azw3", "mobi", "fb2", "pdf"];
     const formatRank = (v: any): number => {
-      const idx = FORMATS.indexOf((v.extension || "").trim().toLowerCase());
+      // LibGen / shadow rows often only set `format`; Rave variants use `extension`.
+      const raw = (v.extension || v.format || "").toString().trim().toLowerCase().replace(/^\./, "");
+      const idx = FORMATS.indexOf(raw);
       return idx === -1 ? FORMATS.length : idx;
     };
     variants.sort((a, b) =>
       matchRank(a.title, titleKey) - matchRank(b.title, titleKey) ||
       matchRank(a.author, authorKey) - matchRank(b.author, authorKey) ||
       langRank(a) - langRank(b) ||
-      sourceRank(a) - sourceRank(b) ||
-      formatRank(a) - formatRank(b)
+      // Prefer EPUB (and other reflowable formats) ahead of PDF when titles match.
+      formatRank(a) - formatRank(b) ||
+      sourceRank(a) - sourceRank(b)
     );
     return variants;
   }
@@ -620,27 +626,37 @@ function DiscoverView({
     });
 
     return [...processed].sort((a, b) => {
+      const formatBoost = (m: any) => {
+        const hay = `${m.label || ""} ${m.url || ""} ${m.extension || ""} ${m.format || ""}`.toLowerCase();
+        if (/\.epub\b|format=epub|ext=epub|\bepub\b/.test(hay)) return 0;
+        if (/\.azw3?\b|\.mobi\b/.test(hay)) return 1;
+        if (/\.pdf\b|\bpdf\b/.test(hay)) return 3;
+        return 2;
+      };
       const getOrderScore = (m: any) => {
         const label = (m.label || "").toLowerCase();
         const url = (m.url || "").toLowerCase();
-        
+        const direct = !!m.isDirect || /[?&]key=/i.test(url);
+
+        // Signed direct file first (especially EPUB).
+        if (direct) return 0 + formatBoost(m) * 0.1;
         // 1. Rave Link / Libretext Direct
         if (label.includes("rave") || label.includes("libretext") || url.includes("libretext")) {
-          return 1;
+          return 1 + formatBoost(m) * 0.1;
         }
         // 2. LibGen
         if (label.includes("libgen") || url.includes("libgen") || url.includes("genesis")) {
-          return 2;
+          return 2 + formatBoost(m) * 0.1;
         }
         // 3. Internet Archive
         if (label.includes("internet archive") || label.includes("archive") || url.includes("archive.org")) {
-          return 3;
+          return 3 + formatBoost(m) * 0.1;
         }
         // 4. Anna's Archive / Mobilism Forum
         if (label.includes("anna") || label.includes("anas") || url.includes("annas-archive") || url.includes("annas") || url.includes("mobilism")) {
-          return 4;
+          return 4 + formatBoost(m) * 0.1;
         }
-        return 5;
+        return 5 + formatBoost(m) * 0.1;
       };
       
       return getOrderScore(a) - getOrderScore(b);
@@ -1233,6 +1249,11 @@ function DiscoverView({
   };
 
   const openBookDetail = (book: any) => {
+    // Plugin-backed manga/comic titles need the chapter reader, not EPUB mirrors.
+    if (book?.pluginId || book?.kind === "manga" || book?.kind === "comic") {
+      setComicBook(book);
+      return;
+    }
     previewAudioRef.current?.pause();
     setPreviewTrackIdx(null);
     setPreviewPlaying(false);
@@ -5048,6 +5069,12 @@ function DiscoverView({
         </div>,
         document.body
       )}
+
+      {comicBook &&
+        ReactDOM.createPortal(
+          <ComicDetailView book={comicBook} onClose={() => setComicBook(null)} />,
+          document.body
+        )}
     </>
   );
 }

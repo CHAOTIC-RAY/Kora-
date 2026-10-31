@@ -208,19 +208,24 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
   const [pageTransitionEffect, setPageTransitionEffect] = useState<string>(() => {
     const saved = readerPrefs?.pageTransitionEffect;
     if (saved) return saved;
-    // Android WebView paper-flip / spring often leaves a blank page after the turn.
+    // Heavy 3D paper-flip clones chapter HTML and janks on phones / Android WebView.
     try {
-      if (/android/i.test(navigator.userAgent)) return "none";
+      const ua = navigator.userAgent || "";
+      if (/android/i.test(ua) || (typeof window !== "undefined" && window.innerWidth < 768)) {
+        return "none";
+      }
     } catch {
       /* ignore */
     }
     return "paper-flip";
   });
-  // Paper-flip + spring on CSS columns blank the page in Android WebView — force instant.
-  const isAndroidWebView =
-    typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+  // Paper-flip + spring on CSS columns blank/lag on Android WebView and small screens.
+  const isConstrainedReader =
+    typeof navigator !== "undefined" &&
+    (/android/i.test(navigator.userAgent) ||
+      (typeof window !== "undefined" && window.innerWidth < 768));
   const effectivePageTransition =
-    isAndroidWebView &&
+    isConstrainedReader &&
     (pageTransitionEffect === "paper-flip" || pageTransitionEffect === "spring")
       ? "none"
       : pageTransitionEffect;

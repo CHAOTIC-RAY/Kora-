@@ -1,10 +1,9 @@
+/** Mirrors observed serving signed get.php keys (aligned with libgenSigned). */
 export const LIBGEN_MIRRORS = [
   "https://libgen.li",
-  "https://libgen.be",
-  "https://libgen.lc",
-  "https://libgen.gs",
-  "https://libgen.st",
-  "https://libgen.rocks",
+  "https://libgen.vg",
+  "https://libgen.la",
+  "https://libgen.gl",
 ];
 
 export function extractLibgenMd5Key(url: string): { md5: string; key?: string } | null {

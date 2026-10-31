@@ -32,15 +32,40 @@ function xml(value: string): string {
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+function looksLikeHeading(paragraph: string): boolean {
+  const t = paragraph.trim();
+  if (!t || t.length > 90) return false;
+  if (/^chapter\s+\d+/i.test(t)) return true;
+  if (/^(part|book|section)\s+[ivxlcdm\d]+/i.test(t)) return true;
+  // Short title-case / all-caps lines without sentence punctuation.
+  if (!/[.!?]$/.test(t) && (t === t.toUpperCase() || /^[A-Z][\w'’\-]+(?:\s+[A-Z][\w'’\-]+){0,8}$/.test(t))) {
+    return t.split(/\s+/).length <= 10;
+  }
+  return false;
+}
+
 function pageToXhtml(text: string, page: number): string {
   const paragraphs = text.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
   const body = paragraphs.length
-    ? paragraphs.map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`).join("\n")
+    ? paragraphs.map((p) => {
+        const html = escapeHtml(p).replace(/\n/g, "<br/>");
+        return looksLikeHeading(p) ? `<h2>${html}</h2>` : `<p>${html}</p>`;
+      }).join("\n")
     : "<p>[No selectable text was found on this PDF page.]</p>";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">
 <head><title>Page ${page}</title><meta charset="utf-8"/><link rel="stylesheet" type="text/css" href="../styles/book.css"/></head>
 <body><section epub:type="chapter" id="page-${page}">${body}</section></body></html>`;
+}
+
+function yieldToUi(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
 }
 
 interface PositionedText {
@@ -162,10 +187,18 @@ export async function convertPdfToEpub(file: File | Blob, options: PdfToEpubOpti
   if (!file || file.size < 8) throw new Error("The selected PDF is empty or too small to be valid.");
   if (file.size > 150 * 1024 * 1024) throw new Error("This PDF is larger than the 150 MB conversion limit. Try a smaller file.");
   const bytes = new Uint8Array(await file.arrayBuffer());
-  if (String.fromCharCode(...bytes.slice(0, 5)) !== "%PDF-") throw new Error("This file does not have a valid PDF signature.");
+  const header = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4]);
+  if (header !== "%PDF-") throw new Error("This file does not have a valid PDF signature.");
 
   let pdf: any;
-  try { pdf = await getDocument({ data: bytes }).promise; }
+  try {
+    pdf = await getDocument({
+      data: bytes,
+      // Disable font face loading — we only need the text layer for EPUB.
+      disableFontFace: true,
+      useSystemFonts: true,
+    }).promise;
+  }
   catch { throw new Error("Kora couldn't open this PDF. It may be damaged, encrypted, or unsupported."); }
 
   const pageCount = Number(pdf.numPages) || 0;
@@ -186,21 +219,24 @@ export async function convertPdfToEpub(file: File | Blob, options: PdfToEpubOpti
   try {
     for (let pageNo = 1; pageNo <= pageCount; pageNo++) {
       const page = await pdf.getPage(pageNo);
-      const content = await page.getTextContent();
+      const content = await page.getTextContent({ includeMarkedContent: false });
       const text = reconstructPageText(content.items || []);
       if (text.trim()) nonEmptyPages++;
       pages.push(text);
       page.cleanup?.();
       options.onProgress?.({ stage: "reading", percent: Math.round(pageNo / Math.max(1, pageCount) * 75) });
+      // Keep the UI responsive during long conversions (Android WebView especially).
+      if (pageNo % 4 === 0) await yieldToUi();
     }
   } finally { await pdf.destroy(); }
 
   // Selectively OCR pages where PDF.js found little or no usable text. This
   // mirrors the working standalone converter while retaining Kora's positioned
   // text reconstruction for pages that already have a good text layer.
+  // Threshold raised slightly so lightly-OCR'd scan pages still get a second pass.
   const ocrPageNumbers = pages
     .map((text, index) => ({ text, pageNo: index + 1 }))
-    .filter(({ text }) => text.trim().replace(/\s/g, "").length < 60)
+    .filter(({ text }) => text.trim().replace(/\s/g, "").length < 80)
     .map(({ pageNo }) => pageNo);
   if (ocrPageNumbers.length) {
     try {
@@ -239,7 +275,7 @@ export async function convertPdfToEpub(file: File | Blob, options: PdfToEpubOpti
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
   const oebps = zip.folder("OEBPS")!;
   const textDir = oebps.folder("text")!;
-  oebps.folder("styles")!.file("book.css", "body{font-family:serif;line-height:1.65;margin:5%;}h1{font-size:1.2em;margin-bottom:1.5em;}p{margin:0 0 1em;text-indent:1em;}.page-heading{font-size:.8em;color:#777;border-bottom:1px solid #ddd;padding-bottom:.5em;}");
+  oebps.folder("styles")!.file("book.css", "body{font-family:serif;line-height:1.65;margin:5%;}h1,h2{font-size:1.15em;margin:1.2em 0 .6em;font-weight:700;page-break-after:avoid;}p{margin:0 0 .85em;text-indent:1.1em;orphans:2;widows:2;}h2+p{text-indent:0;}.page-heading{font-size:.8em;color:#777;border-bottom:1px solid #ddd;padding-bottom:.5em;}");
   const manifest: string[] = [];
   const spine: string[] = [];
   const navItems: string[] = [];

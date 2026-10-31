@@ -14,13 +14,12 @@ import * as cheerio from "cheerio";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
+/** Keep in sync with libgenProxy / libgenSigned working hosts. */
 const LIBGEN_MIRRORS = [
   "https://libgen.li",
-  "https://libgen.be",
-  "https://libgen.lc",
-  "https://libgen.gs",
-  "https://libgen.st",
-  "https://libgen.rocks",
+  "https://libgen.vg",
+  "https://libgen.la",
+  "https://libgen.gl",
 ];
 
 const ANNAS_ARCHIVE_HOSTS = [
@@ -493,21 +492,31 @@ export function resetShadowSourceState(): void {
   sourceHealth.clear();
 }
 
+function pickBestLibgenSignedHref(links: string[], md5: string, mirror: string): string {
+  const matched = links
+    .map((href) => href.replace(/&amp;/g, "&"))
+    .filter((href) => href.toLowerCase().includes(md5.toLowerCase()) && /[?&]key=[^&]+/i.test(href));
+  if (!matched.length) return "";
+  const epub = matched.find((href) => /\.epub\b|format=epub|ext=epub|(?:^|[?&])(?:file|filename)=[^&]*\.epub/i.test(href));
+  try {
+    return new URL(epub || matched[0], mirror).toString();
+  } catch {
+    return "";
+  }
+}
+
 export async function resolveLibgenDirectLinks(books: ShadowBook[], timeoutMs = 5000): Promise<ShadowBook[]> {
   return Promise.all(books.map(async (book) => {
     if (!/(?:libgen|library\s+genesis)/i.test(book.source) || !book.md5 || book.directReady) return book;
     const resolved = await Promise.allSettled(LIBGEN_MIRRORS.map(async (mirror) => {
       const html = await fetchHtml(`${mirror}/ads.php?md5=${encodeURIComponent(book.md5!)}`, timeout(Math.max(timeoutMs, 1000)));
-      const links = [...html.matchAll(/href=["']([^"']*get\.php\?md5=[^"']+)["']/gi)];
-      for (const [, href] of links) {
-        if (href.toLowerCase().includes(book.md5!.toLowerCase()) && /[?&]key=[^&]+/i.test(href)) return new URL(href.replace(/&amp;/g, "&"), mirror).toString();
-      }
-      return "";
+      const links = [...html.matchAll(/href=["']([^"']*get\.php\?md5=[^"']+)["']/gi)].map((m) => m[1]);
+      return pickBestLibgenSignedHref(links, book.md5!, mirror);
     }));
     const directUrl = resolved.find((result) => result.status === "fulfilled" && result.value)?.status === "fulfilled"
       ? (resolved.find((result) => result.status === "fulfilled" && result.value) as PromiseFulfilledResult<string>).value
       : "";
-    if (directUrl) return { ...book, directUrl, directReady: true };
+    if (directUrl) return { ...book, directUrl, directReady: true, downloadUrl: directUrl };
     return book;
   }));
 }
@@ -565,13 +574,33 @@ export async function searchShadowBooks(
     return true;
   });
 
-  const relevant = deduped.filter((book) => relevance(book, q) > 0);
-  const firstLibgen = relevant.findIndex((book) => /(?:libgen|library\s+genesis)/i.test(book.source));
-  const resolved = firstLibgen >= 0
-    ? await resolveLibgenDirectLinks([relevant[firstLibgen]], 1200)
+  const formatPriority = (book: ShadowBook): number => {
+    const fmt = (book.format || book.extension || "").toLowerCase().replace(/^\./, "");
+    const order = ["epub", "azw3", "mobi", "fb2", "pdf", "djvu"];
+    const idx = order.indexOf(fmt);
+    return idx === -1 ? order.length : idx;
+  };
+
+  const relevant = deduped
+    .filter((book) => relevance(book, q) > 0)
+    .sort((a, b) => relevance(b, q) - relevance(a, q) || formatPriority(a) - formatPriority(b));
+
+  // Resolve signed LibGen links for the top hits (EPUB first), not only the first row.
+  const libgenIndexes = relevant
+    .map((book, index) => ({ book, index }))
+    .filter(({ book }) => /(?:libgen|library\s+genesis)/i.test(book.source) && book.md5)
+    .slice(0, 6)
+    .map(({ index }) => index);
+  const resolvedBatch = libgenIndexes.length
+    ? await resolveLibgenDirectLinks(
+        libgenIndexes.map((index) => relevant[index]),
+        4500
+      )
     : [];
-  if (firstLibgen >= 0 && resolved[0]) relevant[firstLibgen] = resolved[0];
-  const directResolved = resolved.filter((book) => book.directReady).length;
+  for (let i = 0; i < libgenIndexes.length; i++) {
+    if (resolvedBatch[i]) relevant[libgenIndexes[i]] = resolvedBatch[i];
+  }
+  const directResolved = resolvedBatch.filter((book) => book.directReady).length;
   return {
     results: relevant.slice(0, 25),
     meta: {

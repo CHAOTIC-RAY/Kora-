@@ -53,8 +53,9 @@ const config: CapacitorConfig = {
       sound: "default",
     },
     Keyboard: {
-      resize: "body",
-      resizeOnFullScreen: true,
+      // `body` resize fights immersive readers on Android; none keeps viewport stable.
+      resize: "none",
+      resizeOnFullScreen: false,
     },
     FirebaseAuthentication: {
       // JS SDK remains canonical; native layer only obtains the Google credential.

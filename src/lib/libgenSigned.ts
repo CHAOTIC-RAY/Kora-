@@ -92,9 +92,13 @@ export async function resolveLibgenSigned(
           // An empty body means we followed a redirect to nothing useful.
           if (!html) continue;
 
-          const m = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
-          if (!m) continue;
-          return `${proto}://${host}/${m[0]}`;
+          // Prefer EPUB CDN links when the interstitial lists several formats.
+          const all = [...html.matchAll(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+[^"'<\s]*/gi)].map(
+            (match) => match[0]
+          );
+          if (!all.length) continue;
+          const epubPrefer = all.find((href) => /\.epub\b|format=epub|ext=epub/i.test(href)) || all[0];
+          return `${proto}://${host}/${epubPrefer.replace(/^\/+/, "")}`;
         } catch {
           /* try next page / proto / host */
         }

@@ -47,6 +47,7 @@ import {
   ImageOff,
 } from "lucide-react";
 import { SourceDetail } from "./SourceDetailSheet";
+import SourceBrowseView from "./SourceBrowseView";
 import CalibreSettingsPanel from "./CalibreSettingsPanel";
 import KindleSettingsPanel from "./KindleSettingsPanel";
 import toast from "react-hot-toast";
@@ -151,6 +152,7 @@ export default function PluginBrowser({
   const [repos, setRepos] = useState<string[]>([]);
   const [installed, setInstalled] = useState<SourcePlugin[]>([]);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [browsePlugin, setBrowsePlugin] = useState<SourcePlugin | null>(null);
   /** Installed themes + integrations, held separately from sources. */
   const [extensions, setExtensions] = useState<PluginManifest[]>([]);
   const [activeThemeId, setActiveThemeId] = useState<string | null>(() => getActiveThemePluginId());
@@ -730,7 +732,19 @@ export default function PluginBrowser({
           onUninstall={() => handleUninstall(detailEntry.plugin)}
           onToggleAllow={() => handleToggleAllow(detailEntry.plugin)}
           onClose={() => setDetailId(null)}
+          onBrowse={
+            detailEntry.installed
+              ? () => {
+                  setDetailId(null);
+                  setBrowsePlugin(detailEntry.plugin);
+                }
+              : undefined
+          }
         />
+      )}
+
+      {browsePlugin && (
+        <SourceBrowseView plugin={browsePlugin} onClose={() => setBrowsePlugin(null)} />
       )}
 
       {(installed.length > 0 || extensions.length > 0) && (

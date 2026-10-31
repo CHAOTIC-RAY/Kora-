@@ -35,6 +35,7 @@ import { canHydrateBook } from "./lib/crossDeviceSync";
 import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
 const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
 const BookReaderPDF = lazy(() => import("./components/BookReaderPDF"));
+const BookReaderComic = lazy(() => import("./components/BookReaderComic"));
 const BookReaderText = lazy(() => import("./components/BookReaderText"));
 const CreateView = lazy(() => import("./components/CreateView"));
 const AudiobookPlayer = lazy(() => import("./components/AudiobookPlayer"));
@@ -3478,6 +3479,17 @@ export default function App() {
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
             }}
           />
+        ) : ["cbz", "zip", "cbr", "cb7"].includes(activeBook.extension?.toLowerCase() || "") ? (
+          <BookReaderComic
+            book={activeBook}
+            userId={user?.uid || ""}
+            onClose={dismissReader}
+            onProgressUpdate={(updatedBook) => {
+              setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
+              setLastReadBook(updatedBook);
+              localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
+            }}
+          />
         ) : (["epub", "mobi", "azw3"].includes(activeBook.extension?.toLowerCase() || "") || !activeBook.extension) ? (
           <BookReaderEPUB
             book={activeBook}
@@ -3537,7 +3549,7 @@ export default function App() {
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider">Troubleshooting</p>
                     <ul className="text-[11px] text-kindle-text-muted space-y-1 ml-4 list-disc">
-                      <li>Kora natively supports <b>EPUB</b>, <b>MOBI</b>, <b>AZW3</b>, and <b>PDF</b> formats.</li>
+                      <li>Kora natively supports <b>EPUB</b>, <b>MOBI</b>, <b>AZW3</b>, <b>PDF</b>, and comic archives (<b>CBZ</b>/<b>CBR</b>/<b>CB7</b>).</li>
                       <li>Text-based formats (TXT, MD, HTML, JSON, CSV) open in the text reader.</li>
                       <li>Try converting your file to <b>EPUB</b> using a tool like Calibre.</li>
                     </ul>
