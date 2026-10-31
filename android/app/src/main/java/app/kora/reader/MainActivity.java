@@ -38,8 +38,15 @@ public class MainActivity extends BridgeActivity {
     super.onCreate(savedInstanceState);
     applyDarkSystemBars();
     enableHomeScreenWidgets();
-    tuneWebView();
+    // Bridge/WebView is often still null in onCreate — retry from onStart.
+    scheduleTuneWebView();
     handleWidgetDeepLink(getIntent());
+  }
+
+  @Override
+  public void onStart() {
+    super.onStart();
+    scheduleTuneWebView();
   }
 
   /**
@@ -47,6 +54,19 @@ public class MainActivity extends BridgeActivity {
    * offline dictionary + shell) are served from cache first, DOM/local storage are
    * enabled for the PWA, and audiobooks keep playing in the background.
    */
+  private void scheduleTuneWebView() {
+    try {
+      if (getBridge() == null || getBridge().getWebView() == null) {
+        // Bridge boots asynchronously after super.onCreate — try again shortly.
+        getWindow().getDecorView().postDelayed(this::tuneWebView, 250);
+        return;
+      }
+      tuneWebView();
+    } catch (Exception ignored) {
+      /* safe to skip */
+    }
+  }
+
   private void tuneWebView() {
     try {
       if (getBridge() == null || getBridge().getWebView() == null) return;

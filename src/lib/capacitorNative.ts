@@ -203,7 +203,16 @@ export async function ensureNotificationChannel(): Promise<void> {
 export async function initCapacitorShell(): Promise<void> {
   if (!isNativeApp()) return;
 
+  // Rewrite relative /api/* to the Worker origin first, then route those
+  // requests through KoraHttp. Order matters: the native shim wraps whatever
+  // fetch is current, so URL rewrite stays available as its fallback.
   installCapacitorApiFetchShim();
+  try {
+    const { installNativeHttpShim } = await import("./nativeHttp");
+    installNativeHttpShim();
+  } catch (err) {
+    console.warn("[Kora/Capacitor] native HTTP shim unavailable", err);
+  }
 
   try {
     const { StatusBar, Style } = await import("@capacitor/status-bar");
