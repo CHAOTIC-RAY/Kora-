@@ -29,15 +29,16 @@ function evaluateRules({ path: docPath, operation, auth, resource, requestData }
     const roomId = segments[1];
     const validRoom = roomId.length >= 4 && roomId.length <= 16;
     if (segments.length === 2) {
+      const allowed = !!auth && validRoom;
       return {
-        allowed: validRoom,
+        allowed,
         rule: 'blipRooms/{roomId}',
-        notes: validRoom ? 'Valid roomId length' : 'Invalid roomId length (must be 4-16)'
+        notes: allowed ? 'Authenticated + valid roomId length' : 'Auth required or invalid room length'
       };
     }
     if (segments.length === 4) {
       const iceCol = segments[2];
-      const allowed = validRoom && (iceCol === 'hostIce' || iceCol === 'guestIce');
+      const allowed = !!auth && validRoom && (iceCol === 'hostIce' || iceCol === 'guestIce');
       return {
         allowed,
         rule: 'blipRooms/{roomId}/{iceCol}/{iceId}',
@@ -52,15 +53,16 @@ function evaluateRules({ path: docPath, operation, auth, resource, requestData }
     const roomId = segments[1];
     const validRoom = roomId.length >= 4 && roomId.length <= 16;
     if (segments.length === 2) {
+      const allowed = !!auth && validRoom;
       return {
-        allowed: validRoom,
+        allowed,
         rule: 'p2pRooms/{roomId}',
-        notes: validRoom ? 'Valid roomId length' : 'Invalid roomId length (must be 4-16)'
+        notes: allowed ? 'Authenticated + valid roomId length' : 'Auth required or invalid room length'
       };
     }
     if (segments.length === 4) {
       const iceCol = segments[2];
-      const allowed = validRoom && (iceCol === 'hostIce' || iceCol === 'guestIce');
+      const allowed = !!auth && validRoom && (iceCol === 'hostIce' || iceCol === 'guestIce');
       return {
         allowed,
         rule: 'p2pRooms/{roomId}/{iceCol}/{iceId}',
@@ -75,10 +77,11 @@ function evaluateRules({ path: docPath, operation, auth, resource, requestData }
     const roomId = segments[1];
     const validRoom = roomId.length === 6 && /^[0-9]+$/.test(roomId);
     if (segments.length === 2 || segments.length === 4) {
+      const allowed = !!auth && validRoom;
       return {
-        allowed: validRoom,
+        allowed,
         rule: 'battleRooms/{roomId}',
-        notes: validRoom ? 'Valid 6-digit roomId' : 'Room ID must be exactly 6 digits'
+        notes: allowed ? 'Authenticated + valid 6-digit roomId' : 'Auth required or invalid room ID'
       };
     }
     return { allowed: false, rule: 'fallback', notes: 'Deeper subpath not matched' };
@@ -89,10 +92,11 @@ function evaluateRules({ path: docPath, operation, auth, resource, requestData }
     const roomId = segments[1];
     const validRoom = roomId.length === 6 && /^[0-9]+$/.test(roomId);
     if (segments.length === 2 || segments.length === 4) {
+      const allowed = !!auth && validRoom;
       return {
-        allowed: validRoom,
+        allowed,
         rule: 'scrabbleRooms/{roomId}',
-        notes: validRoom ? 'Valid 6-digit roomId' : 'Room ID must be exactly 6 digits'
+        notes: allowed ? 'Authenticated + valid 6-digit roomId' : 'Auth required or invalid room ID'
       };
     }
     return { allowed: false, rule: 'fallback', notes: 'Deeper subpath not matched' };
@@ -109,12 +113,13 @@ function evaluateRules({ path: docPath, operation, auth, resource, requestData }
     const roomId = segments[1];
     const validRoom = roomId.length >= 4 && roomId.length <= 16;
     if (segments.length === 2 || segments.length === 4) {
+      const allowed = !!auth && validRoom;
       return {
-        allowed: validRoom,
+        allowed,
         rule: 'unoRooms/{roomId}',
-        notes: validRoom
-          ? 'Alphanumeric roomId within 4-16 chars'
-          : 'Room ID must be 4-16 characters'
+        notes: allowed
+          ? 'Authenticated + alphanumeric roomId within 4-16 chars'
+          : 'Auth required or invalid room ID'
       };
     }
     return { allowed: false, rule: 'fallback', notes: 'Deeper subpath not matched' };
@@ -209,8 +214,13 @@ const tests = [
 
   // --- BLIP ROOMS ---
   {
-    name: 'BlipRooms: Valid 6-char room allowed unauthenticated',
+    name: 'BlipRooms: Unauthenticated read denied',
     params: { path: '/blipRooms/room123', operation: 'read', auth: null },
+    expected: false
+  },
+  {
+    name: 'BlipRooms: Authenticated valid room allowed',
+    params: { path: '/blipRooms/room123', operation: 'read', auth: { uid: 'peer1' } },
     expected: true
   },
   {
@@ -224,13 +234,13 @@ const tests = [
     expected: false
   },
   {
-    name: 'BlipRooms: Valid hostIce subcollection allowed',
-    params: { path: '/blipRooms/room123/hostIce/cand1', operation: 'write', auth: null },
+    name: 'BlipRooms: Valid hostIce subcollection allowed when authenticated',
+    params: { path: '/blipRooms/room123/hostIce/cand1', operation: 'write', auth: { uid: 'peer1' } },
     expected: true
   },
   {
-    name: 'BlipRooms: Valid guestIce subcollection allowed',
-    params: { path: '/blipRooms/room123/guestIce/cand1', operation: 'write', auth: null },
+    name: 'BlipRooms: Valid guestIce subcollection allowed when authenticated',
+    params: { path: '/blipRooms/room123/guestIce/cand1', operation: 'write', auth: { uid: 'peer1' } },
     expected: true
   },
   {
@@ -241,8 +251,8 @@ const tests = [
 
   // --- P2P ROOMS ---
   {
-    name: 'P2pRooms: Valid room ID (4 to 16 chars) allowed',
-    params: { path: '/p2pRooms/testRoom42', operation: 'read', auth: null },
+    name: 'P2pRooms: Valid room ID allowed when authenticated',
+    params: { path: '/p2pRooms/testRoom42', operation: 'read', auth: { uid: 'peer1' } },
     expected: true
   },
   {
@@ -251,8 +261,8 @@ const tests = [
     expected: false
   },
   {
-    name: 'P2pRooms: Valid guestIce subcollection allowed',
-    params: { path: '/p2pRooms/testRoom42/guestIce/ice1', operation: 'create', auth: null },
+    name: 'P2pRooms: Valid guestIce subcollection allowed when authenticated',
+    params: { path: '/p2pRooms/testRoom42/guestIce/ice1', operation: 'create', auth: { uid: 'peer1' } },
     expected: true
   },
   {
@@ -263,8 +273,8 @@ const tests = [
 
   // --- BATTLE ROOMS ---
   {
-    name: 'BattleRooms: Valid 6-digit numeric room allowed',
-    params: { path: '/battleRooms/123456', operation: 'read', auth: null },
+    name: 'BattleRooms: Valid 6-digit numeric room allowed when authenticated',
+    params: { path: '/battleRooms/123456', operation: 'read', auth: { uid: 'peer1' } },
     expected: true
   },
   {
@@ -283,36 +293,36 @@ const tests = [
     expected: false
   },
   {
-    name: 'BattleRooms: Subcollection under valid 6-digit room allowed',
-    params: { path: '/battleRooms/123456/players/p1', operation: 'write', auth: null },
+    name: 'BattleRooms: Subcollection under valid 6-digit room allowed when authenticated',
+    params: { path: '/battleRooms/123456/players/p1', operation: 'write', auth: { uid: 'peer1' } },
     expected: true
   },
 
   // --- UNO ROOMS ---
   // The real generateUnoRoomCode() alphabet, plus the per-peer ICE subpaths.
   {
-    name: 'UnoRooms: alphanumeric room allowed',
-    params: { path: '/unoRooms/AB3X9Z', operation: 'write', auth: null },
+    name: 'UnoRooms: alphanumeric room allowed when authenticated',
+    params: { path: '/unoRooms/AB3X9Z', operation: 'write', auth: { uid: 'peer1' } },
     expected: true
   },
   {
-    name: 'UnoRooms: lowercase-free digits-only code allowed',
-    params: { path: '/unoRooms/234567', operation: 'write', auth: null },
+    name: 'UnoRooms: lowercase-free digits-only code allowed when authenticated',
+    params: { path: '/unoRooms/234567', operation: 'write', auth: { uid: 'peer1' } },
     expected: true
   },
   {
-    name: 'UnoRooms: guest offer subcollection allowed',
-    params: { path: '/unoRooms/AB3X9Z/guests/uid1', operation: 'write', auth: null },
+    name: 'UnoRooms: guest offer subcollection allowed when authenticated',
+    params: { path: '/unoRooms/AB3X9Z/guests/uid1', operation: 'write', auth: { uid: 'peer1' } },
     expected: true
   },
   {
-    name: 'UnoRooms: per-peer hostIce subcollection allowed',
-    params: { path: '/unoRooms/AB3X9Z/hostIce_uid1/cand1', operation: 'write', auth: null },
+    name: 'UnoRooms: per-peer hostIce subcollection allowed when authenticated',
+    params: { path: '/unoRooms/AB3X9Z/hostIce_uid1/cand1', operation: 'write', auth: { uid: 'peer1' } },
     expected: true
   },
   {
-    name: 'UnoRooms: per-peer guestIce subcollection allowed',
-    params: { path: '/unoRooms/AB3X9Z/guestIce_uid1/cand1', operation: 'write', auth: null },
+    name: 'UnoRooms: per-peer guestIce subcollection allowed when authenticated',
+    params: { path: '/unoRooms/AB3X9Z/guestIce_uid1/cand1', operation: 'write', auth: { uid: 'peer1' } },
     expected: true
   },
   {
@@ -333,8 +343,8 @@ const tests = [
 
   // --- SCRABBLE ROOMS ---
   {
-    name: 'ScrabbleRooms: Valid 6-digit numeric room allowed',
-    params: { path: '/scrabbleRooms/987654', operation: 'write', auth: null },
+    name: 'ScrabbleRooms: Valid 6-digit numeric room allowed when authenticated',
+    params: { path: '/scrabbleRooms/987654', operation: 'write', auth: { uid: 'peer1' } },
     expected: true
   },
   {

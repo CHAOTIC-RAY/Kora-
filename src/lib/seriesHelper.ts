@@ -224,7 +224,11 @@ export function buildLibraryGroups(library: BookMetadata[]): LibraryGroup[] {
   // Group numbered volumes by series, and keep every unrelated standalone entry distinct.
   const groupsMap = new Map<string, BookMetadata[]>();
   for (const book of booksWithSeries) {
-    const key = normalizeSeriesKey(book.series ?? "") || `book:${book.id}`;
+    const seriesKey = normalizeSeriesKey(book.series ?? "");
+    const sourceKey = String((book as { source?: string }).source || "").trim().toLowerCase();
+    const key = seriesKey
+      ? `${seriesKey}|${sourceKey}`
+      : `book:${book.id}`;
     if (!groupsMap.has(key)) {
       groupsMap.set(key, []);
     }

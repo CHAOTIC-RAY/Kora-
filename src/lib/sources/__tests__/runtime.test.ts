@@ -82,6 +82,7 @@ const pagesHtml = `
     ok: true,
     status: 200,
     json: async () => ({
+      ok: true,
       status: 200,
       body,
       finalUrl: "https://example.com" + (url.includes("chapter") ? "/ch" : "/list"),

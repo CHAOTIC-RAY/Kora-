@@ -40,24 +40,50 @@ import type {
 /** Ask the Worker to fetch a url and hand back the body as text. */
 async function relayFetch(
   url: string,
-  opts: { referer?: string; headers?: Record<string, string> } = {}
+  opts: { referer?: string; baseUrl?: string; headers?: Record<string, string> } = {}
 ): Promise<{ ok: boolean; status: number; body: string; finalUrl: string; error?: string }> {
   const params = new URLSearchParams({ u: url });
   if (opts.referer) params.set("r", opts.referer);
+  if (opts.baseUrl) params.set("b", opts.baseUrl);
 
   const res = await fetch(`/api/source-fetch?${params.toString()}`, {
     headers: opts.headers ? { "X-Source-Headers": JSON.stringify(opts.headers) } : undefined,
   });
-  if (!res.ok) {
-    return { ok: false, status: res.status, body: "", finalUrl: url, error: await res.text() };
+  let data: { ok?: boolean; status?: number; body?: string; finalUrl?: string; error?: string } | null = null;
+  if (typeof res.json === "function") {
+    data = (await res.json()) as typeof data;
+  } else if (typeof res.text === "function") {
+    const raw = await res.text();
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return {
+        ok: false,
+        status: res.status,
+        body: "",
+        finalUrl: url,
+        error: res.ok ? "Source relay returned invalid JSON." : raw.slice(0, 200) || `HTTP ${res.status}`,
+      };
+    }
+  } else {
+    return {
+      ok: false,
+      status: res.status,
+      body: "",
+      finalUrl: url,
+      error: "Unexpected source relay response.",
+    };
   }
-  const data = await res.json();
+  const upstreamOk =
+    data?.ok !== false &&
+    (typeof data?.status === "number" ? data.status < 400 : res.ok);
+  const relayOk = res.ok && upstreamOk;
   return {
-    ok: true,
-    status: data.status ?? 200,
-    body: data.body ?? "",
-    finalUrl: data.finalUrl ?? url,
-    error: data.error,
+    ok: relayOk,
+    status: data?.status ?? res.status,
+    body: data?.body ?? "",
+    finalUrl: data?.finalUrl ?? url,
+    error: relayOk ? undefined : data?.error || `Source relay failed (${data?.status ?? res.status})`,
   };
 }
 
@@ -201,7 +227,11 @@ export interface SourceClient {
  */
 export function createSourceClient(plugin: SourcePlugin): SourceClient {
   const get = (url: string, referer?: string) =>
-    relayFetch(url, { referer: referer || plugin.baseUrl, headers: plugin.headers });
+    relayFetch(url, {
+      referer: referer || plugin.baseUrl,
+      baseUrl: plugin.baseUrl,
+      headers: plugin.headers,
+    });
 
   /**
    * A theme plugin carries no endpoints — the shared engine supplies them.
@@ -212,6 +242,7 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
       ? createMadaraClient(plugin, (url, referer) =>
           relayFetch(url, {
             referer: referer || plugin.baseUrl,
+            baseUrl: plugin.baseUrl,
             headers: plugin.headers,
           }).then((r) => r.body || "")
         )
@@ -225,7 +256,10 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
     if (!endpoint) return { mangas: [], hasNextPage: false };
     const url = buildUrl(endpoint.url, plugin, { page, ...extraVars });
     const res = await get(url);
-    if (!res.ok || !res.body) return { mangas: [], hasNextPage: false };
+    if (!res.ok) {
+      throw new Error(res.error || `Source relay failed (${res.status})`);
+    }
+    if (!res.body) return { mangas: [], hasNextPage: false };
     return parseListing(res.body, res.finalUrl || url, endpoint.mangas, plugin, endpoint.nextPage);
   }
 

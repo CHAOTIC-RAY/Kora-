@@ -64,6 +64,8 @@ import {
   installPlugin,
   fetchPluginDefinition,
   isSourceVisible,
+  isEntryGated,
+  isSourceOptedIn,
   isUnreadableSource,
   readableNoteFor,
   removeRepo,
@@ -227,6 +229,7 @@ export default function PluginBrowser({
   }, [load]);
 
   const [installingId, setInstallingId] = useState<string | null>(null);
+  const [gatedInstallTarget, setGatedInstallTarget] = useState<RepoEntry | null>(null);
 
   /**
    * Send the user to the Workshop tab, where this plugin's panel lives.
@@ -248,7 +251,7 @@ export default function PluginBrowser({
    * stored. Storing the registry stub would install a source with no
    * selectors — it would show up in Discover and then return nothing.
    */
-  const handleInstall = async (e: RepoEntry) => {
+  const runSourceInstall = async (e: RepoEntry) => {
     if (!e.installUrl) {
       toast.error(`${e.plugin.name}: this registry lists the plugin but does not say where to download it`, {
         id: "src-install",
@@ -261,9 +264,6 @@ export default function PluginBrowser({
       if (def.id !== e.plugin.id) throw new Error("Plugin ID mismatch");
       if (!def) throw new Error("empty response");
       installPlugin(def);
-      // Installing is the opt-in. A separate Enable step meant a source
-      // could sit installed but invisible, with no chip in Discover.
-      if (def.piracy || def.nsfw) setSourceOptIn(def.id, true);
       setInstalled(getInstalledPlugins());
       toast.success(`${def.name} installed`, { id: "src-install" });
     } catch (err) {
@@ -274,6 +274,14 @@ export default function PluginBrowser({
     } finally {
       setInstallingId(null);
     }
+  };
+
+  const handleInstall = async (e: RepoEntry) => {
+    if (isEntryGated(e) && !isSourceOptedIn(e.plugin.id)) {
+      setGatedInstallTarget(e);
+      return;
+    }
+    await runSourceInstall(e);
   };
 
   const handleUninstall = (p: SourcePlugin) => {
@@ -753,6 +761,52 @@ export default function PluginBrowser({
           {installedThemes} theme{installedThemes === 1 ? "" : "s"} ·{" "}
           {installedIntegrations} integration{installedIntegrations === 1 ? "" : "s"} installed
         </p>
+      )}
+
+      {gatedInstallTarget && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="shadow-source-opt-in-title"
+        >
+          <div className="max-w-md w-full rounded-2xl border border-kindle-border bg-kindle-card p-5 space-y-4 shadow-xl">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="w-6 h-6 text-amber-500 shrink-0" />
+              <div className="space-y-2">
+                <h3 id="shadow-source-opt-in-title" className="text-sm font-bold text-kindle-text">
+                  Install shadow source?
+                </h3>
+                <p className="text-xs text-kindle-text-muted leading-relaxed">
+                  <strong className="text-kindle-text">{gatedInstallTarget.plugin.name}</strong> reaches
+                  third-party catalogs that may include copyrighted material. You are responsible for how you
+                  use downloads. This opt-in is required before installation.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wide rounded-xl border border-kindle-border"
+                onClick={() => setGatedInstallTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wide rounded-xl bg-kindle-accent text-white"
+                onClick={() => {
+                  const target = gatedInstallTarget;
+                  setGatedInstallTarget(null);
+                  setSourceOptIn(target.plugin.id, true);
+                  void runSourceInstall(target);
+                }}
+              >
+                I understand — install
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

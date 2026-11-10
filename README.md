@@ -77,6 +77,15 @@ The development server starts through `tsx server.ts`. Open the local URL printe
 
 Deployment needs the correct Cloudflare account, bindings, Firebase project settings, and secrets. Review [self-hosting documentation](https://chaotic-ray.github.io/Kora-/self-hosting.html) before deploying. Do not copy production secrets into client-side `VITE_*` variables.
 
+**Optional Worker / server secrets** (features degrade gracefully when unset):
+
+| Secret | Feature |
+|---|---|
+| `NYT_BOOKS_API_KEY` or `NYT_API_KEY` | NYT Best Sellers shelves in Discover |
+| `GOOGLE_BOOKS_API_KEY` | Higher Google Books quota on the Worker |
+| `RAVE_BOOK_SEARCH_API_KEY` | Rave / Anna's search stream |
+| `GEMINI_API_KEY` | Enriched NYT book details |
+
 ## Architecture at a glance
 
 ```text

@@ -24,7 +24,11 @@ export function isNativeApp(): boolean {
 
 /** Production Worker / API origin for Capacitor builds (no trailing slash). */
 export function getApiBaseUrl(): string {
-  const fromEnv = (import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
+  const env =
+    typeof import.meta !== "undefined" && import.meta.env
+      ? import.meta.env
+      : ({} as ImportMeta["env"]);
+  const fromEnv = (env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
   if (fromEnv) return fromEnv;
   // Capacitor APK must never fall back to relative /api (that hits https://localhost).
   if (isNativeApp()) return "https://kora.chaoticstudio.workers.dev";

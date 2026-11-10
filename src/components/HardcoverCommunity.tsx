@@ -1,6 +1,7 @@
 import React, { useState, useEffect, ErrorInfo, ReactNode } from "react";
 import { MessageSquare, Star, Loader2, Users, AlertTriangle } from "lucide-react";
 import { BookMetadata } from "../lib/firebase";
+import { sanitizeRichHtml } from "../lib/sanitizeHtml";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -253,7 +254,7 @@ function HardcoverCommunityContent({ book }: HardcoverCommunityProps) {
               </div>
               <div 
                 className="text-sm leading-relaxed text-kindle-text max-w-none prose prose-neutral dark:prose-invert [&_p]:mb-2 [&_p:last-child]:mb-0 [&_a]:text-kindle-accent"
-                dangerouslySetInnerHTML={{ __html: rev.review || "" }}
+                dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(rev.review || "") }}
               />
             </div>
           ))}

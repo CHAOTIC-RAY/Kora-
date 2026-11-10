@@ -37,11 +37,9 @@ const LS_OPTED_IN = "kora.sourceOptsIn.v1";
  * If the new URL is wrong, the plugin hub silently loads ZERO plugins for
  * everyone, with no error the user can act on.
  *
- * Renamed from Kora-Sources -> Kora-Plugins. The raw URL only resolves once
- * the repository is actually renamed in GitHub settings (GitHub redirects the
- * old path, but raw.githubusercontent follows the redirect only after the
- * rename exists). Verified 2026-10-01: the new URL returned 404 while the old
- * one returned 200, so this constant is correct in code but NOT yet live.
+ * Renamed from Kora-Sources -> Kora-Plugins. Verified 2026-11-10: the URL
+ * resolves and the registry lists 16 plugins; `RETIRED_REPOS` migrates legacy
+ * hub entries on read.
  */
 export const DEFAULT_REPO = "https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-Plugins/main/index.json";
 
@@ -334,6 +332,10 @@ export function setSourceOptIn(id: string, allow: boolean): void {
   if (allow) set.add(id);
   else set.delete(id);
   writeJSON(LS_OPTED_IN, Array.from(set));
+}
+
+export function isSourceOptedIn(id: string): boolean {
+  return optedIn().includes(id);
 }
 
 export function hasOptedInAnything(): boolean {
