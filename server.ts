@@ -1682,8 +1682,10 @@ app.get("/api/nytimes/overview", async (req, res) => {
     const apiKey = process.env.NYT_BOOKS_API_KEY || process.env.NYT_API_KEY;
     if (!apiKey || apiKey.trim() === "") {
       console.warn("NYT_BOOKS_API_KEY is missing or empty");
-      return res.status(500).json({
-        error: "NYT API Key not configured. Please add NYT_BOOKS_API_KEY to your secrets."
+      return res.status(200).json({
+        configured: false,
+        results: { lists: [] },
+        notice: "NYT Best Sellers API is not configured on this server.",
       });
     }
 
