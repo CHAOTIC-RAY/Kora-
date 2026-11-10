@@ -16,18 +16,18 @@ Kora is a large React 19 + TypeScript PWA with a **dual backend** (Node `server.
 
 | Priority | Issue | Severity |
 |----------|--------|----------|
-| 1 | **Unit test suite not green** (4 files / 2 assertion failures + 2 Node crashes) | High |
-| 2 | **Library series grouping merges same-series books from different plugin sources** | High |
-| 3 | **Firestore rules: open P2P/game rooms + loose `publicBooks` writes** | High |
-| 4 | **`@capacitor/android@8.4.2` below patched range** (GHSA-rvm3-566m-v7fv) | Critical (Android) |
-| 5 | **No automated CI for `scripts/run-all-tests.mjs`**; `package.json` has no `npm test` | Medium |
-| 6 | **Main JS chunk ~1.94 MB** (gzip ~538 KB) — cold-load performance | Medium |
-| 7 | **Unsanitized `dangerouslySetInnerHTML`** in news/Wikipedia/community surfaces | Medium |
-| 8 | **NYT endpoints return HTTP 500** when keys missing (noisy console; client falls back) | Medium (local/self-host) |
-| 9 | **Worker CORS preflight: `Allow-Origin: *` + `Allow-Credentials: true`** | Low–Medium |
-| 10 | **`server.ts` vs `worker.ts` drift** (~4.9k vs ~4.2k lines, separate maintenance) | Medium (long-term) |
+| 1 | **`/api/source-fetch` missing** — all registry **source** plugins return zero results (404 on prod + `wrangler dev`; dev server serves SPA HTML) | **Critical** |
+| 2 | **Unit test suite not green** (4 files / 2 assertion failures + 2 Node crashes) | High |
+| 3 | **Library series grouping merges same-series books from different plugin sources** | High |
+| 4 | **Firestore rules: open P2P/game rooms + loose `publicBooks` writes** | High |
+| 5 | **`@capacitor/android@8.4.2` below patched range** (GHSA-rvm3-566m-v7fv) | Critical (Android) |
+| 6 | **Built-in Discover search** (Google / Rave stream) works on Node dev; **Worker Google Books can 429** on shared quota | Medium |
+| 7 | **No automated CI** for plugins or `run-all-tests.mjs` | Medium |
+| 8 | **Main JS chunk ~1.94 MB** — cold-load performance | Medium |
+| 9 | **Unsanitized `dangerouslySetInnerHTML`** in news/Wikipedia/community surfaces | Medium |
+| 10 | **`server.ts` vs `worker.ts` drift** (~4.9k vs ~4.2k lines) | Medium (long-term) |
 
-Screenshots from manual testing live under `/opt/cursor/artifacts/` (e.g. `kora-discover-search-dune.png`, `kora-plugin-hub.png`, `kora-mobile-375-feed.png`). Console notes: `kora-console-notes.txt`, full UI report: `kora-ui-audit-report.txt`.
+Screenshots: general audit (`kora-discover-search-dune.png`, etc.) plus plugin lifecycle (`kora-plugins-discover-hub.png`, `kora-plugin-gutenberg-lifecycle.png`, `kora-plugin-theme-copper.png`, `kora-plugin-shadow-opt-in.png`). Machine-readable plugin harness output: `/opt/cursor/artifacts/plugin-audit-results.json`.
 
 ---
 
@@ -168,6 +168,10 @@ Severity: **Critical** = exploit/data loss/production down; **High** = wrong beh
 | ID | Severity | Category | Summary | Location | Reproduction |
 |----|----------|----------|---------|----------|--------------|
 | SEC-01 | Critical | Security (Android) | `@capacitor/android@8.4.2` in vulnerable range **< 8.4.3** (GHSA-rvm3-566m-v7fv — remote content via internal HTTP proxy) | `package.json` L33, lockfile | `npm audit` / `npm ls @capacitor/android` → 8.4.2 |
+| PLUG-01 | **Critical** | Plugins | **`/api/source-fetch` not implemented** in `src/worker.ts` or `server.ts`; client always calls it (`client.ts:48`) | `src/lib/sources/client.ts`, `docs/architecture.html` | `curl …/api/source-fetch?u=…` → **404** prod and `wrangler dev`; `:5000` → **SPA HTML** |
+| PLUG-02 | High | Plugins | Registry source search silently empty (defensive client returns `[]`, no user-visible error) | `client.ts:228–229`, `SourceBrowseView.tsx:38–40` | Install Gutenberg → browse/search → empty grid |
+| PLUG-03 | Medium | Plugins / UX | Shadow sources install **without blocking opt-in modal** (warning text only) | `PluginBrowser.tsx`, `store.ts:426–429` | Install MangaReadOrg from Restricted list |
+| PLUG-04 | Medium | UX | Cover / `cover-redirect` 404 noise during Discover (unrelated to plugins but masks diagnosis) | Worker `cover-redirect` route, console in browser | Open Discover with feeds enabled |
 
 ### 4.2 High
 
@@ -231,8 +235,11 @@ Effort: **S** ≈ 0.5–1 day, **M** ≈ 1–3 days, **L** ≈ 3–7 days (engin
 | 0.4 | Fix `import.meta.env` in Node tests (test bootstrap or guard in `getApiBaseUrl`) | S | TEST-03 | — |
 | 0.5 | Fix `resolveMatchGame` whitespace `gameName` behavior **or** align test if product intent changed | S | TEST-01, GAME-01 | — |
 | 0.6 | Include `source` (or `sourcePluginId`) in library group key when volumes share series name | M | TEST-02, LIB-01 | — |
+| **0.7** | **Restore `/api/source-fetch`** (JSON relay + SSRF guard, shared by Worker and Node) and wire `scripts/verify-registry-readable.mts` in CI | **L** | **PLUG-01, PLUG-02** | ssrfGuard |
+| 0.8 | Surface relay failures in UI (toast when search returns 0 due to HTTP error, not empty catalog) | M | PLUG-02 | 0.7 |
+| 0.9 | Re-run `plugin-audit-results.json` harness after 0.7; gate release on ≥1 hit per legal source | S | — | 0.7 |
 
-**Suggested order:** 0.1 → 0.2 → 0.4 → 0.5 → 0.6 → 0.3
+**Suggested order:** **0.7** → 0.1 → 0.2 → 0.4 → 0.5 → 0.6 → 0.8 → 0.9 → 0.3
 
 ### Phase 1 — Security & data integrity (M–L)
 
@@ -270,8 +277,9 @@ Effort: **S** ≈ 0.5–1 day, **M** ≈ 1–3 days, **L** ≈ 3–7 days (engin
 | # | Task | Effort | Issues | Deps |
 |---|------|--------|--------|------|
 | 4.1 | Playwright/Cypress smoke: Discover search, Plugin install, Settings open | M | — | 0.3 |
-| 4.2 | Production synthetic checks: `/api/search/health`, google-books, Worker secrets present | S | — | 2.3 |
+| 4.2 | Production synthetic checks: `/api/search/health`, `google-books`, **`/api/source-fetch`**, Worker secrets present | S | PLUG-01 | 0.7 |
 | 4.3 | Update stale comments (`store.ts` registry URL note) | S | DOC-01 | — |
+| 4.4 | Plugin Hub E2E: install Gutenberg + theme + one Madara source; assert non-zero `createSourceClient.search` | M | — | 0.7, 4.1 |
 
 ---
 
@@ -290,7 +298,7 @@ Effort: **S** ≈ 0.5–1 day, **M** ≈ 1–3 days, **L** ≈ 3–7 days (engin
 
 ## 7. Suggested execution order (rollup)
 
-1. **Week-equivalent 0:** Phase 0 (green tests, CI, Capacitor CVE, library grouping fix).  
+1. **Week-equivalent 0:** Phase 0 — **restore `source-fetch` first**, then green tests, CI, Capacitor CVE, library grouping fix.  
 2. **Next:** Phase 1 security (Firestore + HTML sanitization).  
 3. **Then:** Phase 2 operational polish (NYT behavior, housekeeping).  
 4. **Parallel track:** Phase 3 performance/architecture as capacity allows.  
@@ -298,7 +306,123 @@ Effort: **S** ≈ 0.5–1 day, **M** ≈ 1–3 days, **L** ≈ 3–7 days (engin
 
 ---
 
-## 8. Appendix — commands for reproducing this audit
+## 8. Plugin test results (follow-up)
+
+**Scope:** Investigation only (no app code changed). Environments: `npm run dev` (`:5000`), `npx wrangler dev` (`:8787`), production Worker `https://kora.chaoticstudio.workers.dev`. Search queries: *Pride and Prejudice*, *Project Hail Mary*, *xyzzyqqqnotabook* (no full book downloads).
+
+### 8.1 Registries and URLs in code
+
+| Registry / source | URL / constant | Role |
+|-------------------|----------------|------|
+| **Default plugin registry** | `DEFAULT_REPO` → `https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-Plugins/main/index.json` | Plugin Hub catalog (`store.ts:46`) |
+| **Legacy registry (purged on read)** | `LEGACY_DEFAULT_REPO` → `…/Kora-Sources/main/index.json` | Migrated users (`store.ts:49`, `RETIRED_REPOS`) |
+| **Retired test registry** | `/data/test-registry.json` | Stripped via `RETIRED_REPOS` (`store.ts:206–208`) |
+| **Custom repos** | User-supplied HTTPS `index.json` via Plugin Hub “Add repo” | `addRepo()` — self-trusted (`types.ts:49–50`) |
+| **Built-in Discover engines** (not JSON plugins) | `/api/search/stream`, `/api/google-books/search`, `shadowSources.ts`, Goodreads/NYT routes in `worker.ts` / `server.ts` | Unified ebook search; Rave/Libgen/Anna’s pipeline |
+| **Plugin network relay (required)** | `/api/source-fetch` | **Documented** (`client.ts:4–5`, `docs/architecture.html`) — **not present in Worker or Node in this tree** |
+
+The shipped registry contains **16 extensions / 16 plugin entries** (verified 2026-11-10). There are **no bundled source JSON files** inside the Kora app repo; definitions live on GitHub (`Kora-Plugins`). `sources-readable.json` in the app repo is a **frozen readability report** from `scripts/verify-registry-readable.mts`, not a second registry.
+
+### 8.2 Catalog enumeration (all registry plugins)
+
+| ID | Name | Category | Gated (piracy) | Registry `readable` | Definition URL |
+|----|------|----------|----------------|---------------------|----------------|
+| `kora-book-oceanofepub` | Ocean of EPUB | source | yes | **false** (by design: links only) | `sources/books/oceanofepub.json` |
+| `kora-integration-calibre` | Calibre | integration | no | n/a | `sources/integrations/calibre.json` |
+| `kora-integration-croc` | croc | integration | no | n/a | `sources/integrations/croc.json` |
+| `kora-integration-kindle` | Send to Kobo/Kindle | integration | no | n/a | `sources/integrations/send-to-kindle.json` |
+| `kora-legal-gutenberg` | Project Gutenberg | source | no | default | `sources/legal/gutenberg.json` |
+| `kora-legal-internet-archive` | Internet Archive (Texts) | source | no | default | `sources/legal/internet-archive.json` |
+| `kora-book-libretexts-chem` | LibreTexts Chemistry | source | no | default | `sources/legal/libretexts-chem.json` |
+| `4503604002548978580` | MangaReadOrg | source | yes | default | `sources/manga/mangaread-org.json` |
+| `4503604003186470944` | MangaZin | source | yes | default | `sources/manga/mangazin.json` |
+| `kora-manga-manhuahot` | ManhwaHot | source | yes | default | `sources/manga/manhuahot.json` |
+| `4503604002226619223` | ManhuaPlus | source | yes | default | `sources/manga/manhuaplus.json` |
+| `4503604002575350979` | Manhuaus | source | yes | default | `sources/manga/manhuaus.json` |
+| `kora-manga-s2read` | S2Read | source | yes | default | `sources/manga/s2read.json` |
+| `kora-theme-copper-night` | Copper Night | theme | no | n/a | `sources/themes/copper-night.json` |
+| `kora-theme-cyberui-operator` | CyberUI // Operator | theme | no | n/a | `sources/themes/cyberui-operator.json` |
+| `kora-theme-mint-terminal` | Mint Terminal | theme | no | n/a | `sources/themes/mint-terminal.json` |
+
+Built-in **Discover** search (always on, no install): Google Books metadata stream, Anna’s/Libgen/Rave shadow search (`annas` NDJSON chunk), Goodreads shelves, optional NYT (keys), audiobook streams — see §1.3 and `/api/search/stream`.
+
+### 8.3 Install / enable / disable / uninstall (UI)
+
+| Plugin type | Install | Enable | Disable | Uninstall | Observed |
+|-------------|---------|--------|---------|-----------|----------|
+| **Source** (e.g. Gutenberg) | Hub → INSTALL | Appears in Discover **FILTERS** chip when installed; piracy sources need **opt-in** (`setSourceOptIn`, `store.ts:332`) | Remove chip / uninstall | REMOVE + toast | **Lifecycle OK**; search/browse **empty** (relay) |
+| **Shadow source** (MangaReadOrg) | INSTALL from Restricted section | Same | Uninstall | REMOVE | **Lifecycle OK**; no blocking opt-in modal; **search “solo” → no manga rows** |
+| **Theme** (Copper Night) | INSTALL | Auto-**APPLY** on install | Apply another theme / built-in skin | REMOVE reverts UI | **Works** — immediate visual change (screenshot) |
+| **Integration** (Calibre, croc, Kindle) | INSTALL | Workshop bento tile + Settings panel | Uninstall extension | REMOVE | **Partial** — needs user server/credentials; not search-tested |
+
+“Disable” for sources is effectively **uninstall** or **withhold piracy opt-in**; there is no separate paused flag beyond removal from `localStorage` (`kora.sourcePlugins.v1` / `kora.plugins.v1`).
+
+### 8.4 Per-plugin runtime status (search + metadata)
+
+Status key: **works** / **partially works** / **broken** / **blocked by network or keys**.
+
+Harness: `createSourceClient` + patched `fetch` to production/local Worker (`plugin-audit-results.json`). Pride / Hail Mary / nonsense queries — result **counts** only (no downloads).
+
+| Name | Status | Pride & Prejudice | Project Hail Mary | Nonsense query | Root-cause hypothesis (files) |
+|------|--------|-------------------|-------------------|----------------|------------------------------|
+| **Built-in Google Books** (Discover) | **works** on `:5000` dev | metadata + covers | metadata | empty/irrelevant | `server.ts` `/api/google-books/search`; Open Library fallback when no API key |
+| **Built-in Rave/Anna’s** (Discover stream) | **works** on dev | Libgen rows + direct URLs | rows | junk rows | `server.ts` `/api/search/stream`, `shadowSources.ts` |
+| **Built-in Google Books** (Worker) | **blocked** (audit window) | 429 quota | 429 | 429 | Shared Books API consumer `project_number:624717413613` on Worker path |
+| Ocean of EPUB | **broken** (would be **partial** when relay works) | 0 | 0 | 0 | Missing relay; registry marks `readable: false` (`oceanofepub.json`, hub note) |
+| Calibre | **partially works** | n/a | n/a | n/a | Integration only — `calibreClient.ts`, user Content Server |
+| croc | **partially works** | n/a | n/a | n/a | `lib/croc/client.ts`, device transfer |
+| Send to Kobo/Kindle | **partially works** | n/a | n/a | n/a | `koboKindleSender.ts` |
+| Project Gutenberg | **broken** | 0 | 0 | 0 | **`/api/source-fetch` 404** — JSON client never gets Gutendex body (`client.ts:240–247`) |
+| Internet Archive (Texts) | **broken** | 0 | 0 | 0 | Same missing relay |
+| LibreTexts Chemistry | **broken** | 0 | 0 | 0 | Same missing relay |
+| MangaReadOrg | **broken** | 0 | 0 | 0 | Madara engine OK in unit tests; **relay missing** at runtime |
+| MangaZin | **broken** | 0 | 0 | 0 | Same |
+| ManhwaHot | **broken** | 0 | 0 | 0 | Same |
+| ManhuaPlus | **broken** | 0 | 0 | 0 | Same |
+| Manhuaus | **broken** | 0 | 0 | 0 | Same |
+| S2Read | **broken** | 0 | 0 | 0 | Same |
+| Copper Night | **works** | n/a | n/a | n/a | Tokens validate (`themeRuntime.ts`); UI apply verified |
+| CyberUI // Operator | **works** | n/a | n/a | n/a | Manifest + optional `styleUrl` |
+| Mint Terminal | **works** | n/a | n/a | n/a | Manifest |
+
+**Relay verification (all environments tested):**
+
+```text
+GET https://kora.chaoticstudio.workers.dev/api/source-fetch?u=…  → 404 Not Found
+GET http://127.0.0.1:8787/api/source-fetch?u=…                   → 404 Not Found
+GET http://127.0.0.1:5000/api/source-fetch?u=…                     → 200 text/html (Vite SPA, not JSON)
+```
+
+Grep of `src/worker.ts` and `server.ts` shows **no route handler** for `source-fetch` despite architecture docs and `scripts/verify-registry-readable.mts` assuming production provides it (`verify-registry-readable.mts:64`).
+
+### 8.5 Plugin-specific issues (new / updated)
+
+| ID | Severity | Summary |
+|----|----------|---------|
+| PLUG-01 | Critical | Missing `/api/source-fetch` breaks **all** registry source plugins |
+| PLUG-02 | High | Silent empty search — no distinction between “no hits” and “relay down” |
+| PLUG-03 | Medium | Shadow source opt-in is informational, not gated at install time |
+| PLUG-04 | Medium | `cover-redirect` / feed cover 404s clutter console during plugin testing |
+| PLUG-05 | Low | Hub UI during prior audit listed LibriVox; **not** in current `index.json` (registry drift vs screenshots) |
+
+### 8.6 Evidence artifacts
+
+| Artifact | Description |
+|----------|-------------|
+| `kora-plugins-discover-hub.png` | Full Plugin Hub |
+| `kora-plugin-gutenberg-lifecycle.png` | Gutenberg installed (REMOVE visible) |
+| `kora-plugin-theme-copper.png` | Copper Night applied |
+| `kora-plugin-shadow-opt-in.png` | Restricted / shadow library section |
+| `plugin-audit-results.json` | Automated per-plugin search counts |
+| `PLUGIN-LIFECYCLE-REPORT.md` | UI lifecycle narrative (computer-use) |
+
+### 8.7 Folded into remediation plan
+
+See **Phase 0.7–0.9** (restore relay, UI errors, CI plugin smoke) and **Phase 4.2 / 4.4** (synthetic `source-fetch` + Hub E2E).
+
+---
+
+## 9. Appendix — commands for reproducing this audit
 
 ```bash
 git clone https://github.com/CHAOTIC-RAY/Kora-.git
@@ -314,6 +438,8 @@ npm run dev   # http://127.0.0.1:5000
 curl -sS "http://127.0.0.1:5000/api/google-books/search?q=dune&maxResults=3"
 curl -sS "http://127.0.0.1:5000/api/search/stream?q=dune&page=1"
 curl -sS "http://127.0.0.1:5000/api/nytimes/overview"
+curl -sS -o /dev/null -w "%{http_code}\n" "https://kora.chaoticstudio.workers.dev/api/source-fetch?u=https%3A%2F%2Fexample.com"
+node /opt/cursor/artifacts/plugin-audit-runner.mjs   # writes plugin-audit-results.json
 ```
 
 ---
