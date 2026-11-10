@@ -26,6 +26,7 @@
     "lint": "tsc --noEmit",
     "test": "node scripts/run-all-tests.mjs",
     "test:plugins": "node scripts/verify-plugin-relay.mjs",
+    "test:api-health": "node scripts/verify-api-health.mjs",
     "parse-dict": "tsx parse-stardict.ts",
     "size": "vite build && node scripts/measure-bundle.mjs",
     "test:scrabble-scoring": "tsx scripts/verify-scrabble-scoring.mts"

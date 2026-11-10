@@ -19,3 +19,16 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm test
+      - name: API smoke (source-fetch + search)
+        run: |
+          node dist/server.cjs &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:5000/api/google-books/search?q=test\&maxResults=1 >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          npm run test:api-health
+          npm run test:plugins
+          kill $SERVER_PID
