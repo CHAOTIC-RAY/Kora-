@@ -26,6 +26,7 @@ import {
 import { toast } from "react-hot-toast";
 import { storeBookFile } from "../db/indexedDB";
 import { syncBookToCloud, BookMetadata } from "../lib/firebase";
+import { sanitizeRichHtml } from "../lib/sanitizeHtml";
 
 export interface WikiArticleSummary {
   pageid?: number;
@@ -533,7 +534,7 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
                       <h4 className="text-xs font-bold text-kindle-text line-clamp-1">{item.title}</h4>
                       <div
                         className="text-[10px] text-kindle-text-muted line-clamp-2 leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: item.snippet }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(item.snippet) }}
                       />
                       <span className="text-[8px] font-mono text-kindle-text-muted/80 block pt-0.5">
                         {item.wordcount ? `${item.wordcount.toLocaleString()} words` : "Wikipedia page"}
@@ -734,7 +735,7 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
                     className={`prose max-w-none text-xs sm:text-sm text-kindle-text leading-relaxed space-y-4 ${
                       useSerifFont ? "font-serif" : "font-sans"
                     }`}
-                    dangerouslySetInnerHTML={{ __html: articleContentHtml }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(articleContentHtml) }}
                   />
                 )}
               </div>

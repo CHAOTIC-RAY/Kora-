@@ -14,6 +14,7 @@ import { newsReaderThemeClasses } from "../lib/newsReaderPrefs";
 import { isTelegramArticleLink } from "../lib/telegramFeed";
 import { useNewsReaderPrefs } from "../hooks/useNewsReaderPrefs";
 import NewsReaderSettingsPanel from "./NewsReaderSettingsPanel";
+import { sanitizeRichHtml } from "../lib/sanitizeHtml";
 
 interface FeedArticleReaderProps {
   item: FeedItem;
@@ -483,7 +484,7 @@ export default function FeedArticleReader({
                         lineHeight: prefs.lineSpacing,
                         ["--news-paragraph-gap" as string]: `${prefs.paragraphSpacing}em`,
                       }}
-                      dangerouslySetInnerHTML={{ __html: articleHtml }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(articleHtml) }}
                     />
                   )}
                         </div>
