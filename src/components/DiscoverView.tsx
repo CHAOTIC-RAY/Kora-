@@ -957,10 +957,14 @@ function DiscoverView({
       } else {
         console.log("[NYT Cache] Fetching fresh NYT overview...");
         const res = await fetch("/api/nytimes/overview");
-        if (!res.ok) throw new Error("Failed to fetch NYT overview");
-        nytOverviewJson = await res.json();
+        nytOverviewJson = await res.json().catch(() => null);
+        if (!res.ok && nytOverviewJson?.configured !== false) {
+          throw new Error("Failed to fetch NYT overview");
+        }
 
-        if (nytOverviewJson?.fault || (nytOverviewJson?.error && !nytOverviewJson?.results?.lists?.length)) {
+        if (nytOverviewJson?.configured === false) {
+          nytError = null;
+        } else if (nytOverviewJson?.fault || (nytOverviewJson?.error && !nytOverviewJson?.results?.lists?.length)) {
           nytError = "The NYT Best Sellers API is unavailable.";
         }
 
@@ -3039,7 +3043,7 @@ function DiscoverView({
         return;
       }
 
-      // 2. Pick the best result - prioritize those already havingrave source
+      // 2. Pick the best result - prioritize those already having a Rave source
       const firstBookResult = searchResult.books.find((b: any) => b.sourceId === "rave") || searchResult.books[0];
       
       // 3. Fetch mirrors for this book
