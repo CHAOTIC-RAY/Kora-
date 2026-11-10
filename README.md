@@ -86,6 +86,21 @@ Deployment needs the correct Cloudflare account, bindings, Firebase project sett
 | `RAVE_BOOK_SEARCH_API_KEY` | Rave / Anna's search stream |
 | `GEMINI_API_KEY` | Enriched NYT book details |
 
+### Optional display ads (Adsterra or placeholder)
+
+Ads are **off by default**. Banners appear only on **Discover** and **Library** in the web/PWA shell (not in readers). The Capacitor APK hides ads unless you opt in.
+
+1. Copy [`.env.example`](./.env.example) to `.env` locally (or set CI / Worker build vars).
+2. Set **`VITE_ADS_ENABLED=true`** when building the client (`npm run build` / `build:prod`).
+3. Paste publisher keys from your ad network:
+   - **`VITE_ADS_ZONE_MOBILE`** — 320×50 slot key
+   - **`VITE_ADS_ZONE_DESKTOP`** — 728×90 or 468×60 slot key (match **`VITE_ADS_DESKTOP_SIZE`**: `728x90` default, or `468x60`)
+4. Optional: **`VITE_ADS_PROVIDER`** (`adsterra` default, or `placeholder` for layout testing), **`VITE_ADS_SCRIPT_ORIGIN`** (default `https://www.highperformanceformat.com`), **`VITE_ADS_CSP_EXTRA`** (extra `script-src` origins, space/comma-separated).
+5. **Native APK:** set **`VITE_ADS_ALLOW_NATIVE=true`** only if you want banners inside the Capacitor shell (default `false`).
+6. **Deploy with CSP:** set **`KORA_ADS_ENABLED=true`** on the Node server (`dist/server.cjs`) and in **`wrangler.toml`** `vars` for production/beta so `Content-Security-Policy` allows ad script domains (`dist/_headers` is also emitted when you build with `VITE_ADS_ENABLED=true`).
+
+Do not commit live zone keys; keep them in `.env`, GitHub Actions secrets, or Cloudflare Worker vars.
+
 ## Architecture at a glance
 
 ```text

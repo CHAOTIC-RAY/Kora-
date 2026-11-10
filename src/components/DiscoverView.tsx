@@ -37,6 +37,7 @@ import { classifyDownloadLink } from "../lib/downloadLinkKind";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
+import AdBanner from "./AdBanner";
 
 interface DiscoverViewProps {
   userId: string;
@@ -4133,6 +4134,7 @@ function DiscoverView({
           )}
         </div>
       )}
+        <AdBanner placement="discover" />
       </div>
 
       {seriesDetailBook && ReactDOM.createPortal(

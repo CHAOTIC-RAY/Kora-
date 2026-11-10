@@ -37,6 +37,7 @@ import {
   sourceFetchJsonResponse,
   SOURCE_FETCH_CORS_HEADERS,
 } from "./lib/sourceFetchRelay";
+import { applyWorkerAdsCsp } from "./lib/ads/workerCsp";
 import {
   getNetgalleyCoverUrl,
   searchNetgalleyCatalog,
@@ -335,6 +336,10 @@ export interface Env {
   RAVE_BOOK_SEARCH_API_KEY?: string;
   /** R2 storage for the Kindle-compatible device relay. */
   RELAY_BUCKET?: any;
+  /** When "true", attach display-ad CSP to Worker HTML responses & align with dist/_headers. */
+  KORA_ADS_ENABLED?: string;
+  VITE_ADS_PROVIDER?: string;
+  VITE_ADS_CSP_EXTRA?: string;
 }
 
 const FALLBACK_DOMAINS = {
@@ -502,14 +507,16 @@ export default {
     // The Kindle/Kobo receiver is a standalone, inline-only HTML page. Handle
     // it before static-asset fallback so /send never resolves to the Kora SPA.
     if (path === "/send" && (request.method === "GET" || request.method === "HEAD")) {
+      const sendHeaders = new Headers({
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+      });
+      applyWorkerAdsCsp(sendHeaders, env);
       return new Response(request.method === "HEAD" ? null : renderEreaderPage(url.origin), {
         status: 200,
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-store",
-          "X-Content-Type-Options": "nosniff",
-          "Referrer-Policy": "no-referrer",
-        },
+        headers: sendHeaders,
       });
     }
 

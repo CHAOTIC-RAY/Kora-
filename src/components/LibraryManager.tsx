@@ -35,6 +35,7 @@ import { logger } from "../lib/logger";
 import { openArchive } from "../lib/formats/archive";
 import { convertPdfToEpub } from "../lib/pdfToEpub";
 import toast from "react-hot-toast";
+import AdBanner from "./AdBanner";
 
 /**
  * What the Workshop file picker will even offer to import.
@@ -2384,6 +2385,8 @@ function LibraryManager({
           </div>
         </div>
       )}
+
+      <AdBanner placement="library" />
 
       {editingCoverBook && (
         <BookCoverEditor 
