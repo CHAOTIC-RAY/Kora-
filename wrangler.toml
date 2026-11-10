@@ -21,7 +21,7 @@ binding = "BROWSER"
 # Public production Worker (deploy from `main` with deploy:prod).
 [env.production]
 name = "kora"
-vars = { APP_CHANNEL = "production" }
+vars = { APP_CHANNEL = "production", KORA_ADS_ENABLED = "false" }
 
 [[env.production.r2_buckets]]
 binding = "RELAY_BUCKET"
@@ -30,7 +30,7 @@ bucket_name = "kora-relay"
 # Beta sandbox Worker (deploy from `beta` with deploy:beta).
 [env.beta]
 name = "kora-beta"
-vars = { APP_CHANNEL = "beta" }
+vars = { APP_CHANNEL = "beta", KORA_ADS_ENABLED = "false" }
 
 [[env.beta.r2_buckets]]
 binding = "RELAY_BUCKET"

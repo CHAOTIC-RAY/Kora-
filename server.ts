@@ -30,6 +30,7 @@ import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./src
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./src/lib/libgenProxy";
 import { searchShadowBooks } from "./src/lib/shadowSources";
 import { fetchLibgenSeries, fetchSeriesCatalog } from "./src/lib/seriesCatalog";
+import { buildKoraAdsContentSecurityPolicy } from "./src/lib/ads/cspPolicy";
 import {
   getNetgalleyCoverUrl,
   getNetgalleyBookDetails,
@@ -4946,8 +4947,21 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
+    const adsCspEnabled = (process.env.KORA_ADS_ENABLED || "").trim().toLowerCase() === "true";
+    const adsCsp = adsCspEnabled
+      ? buildKoraAdsContentSecurityPolicy({
+          provider: process.env.VITE_ADS_PROVIDER,
+          extraOrigins: (process.env.VITE_ADS_CSP_EXTRA || "")
+            .split(/[,;\s]+/)
+            .map((s) => s.trim())
+            .filter(Boolean),
+        })
+      : null;
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
+      if (adsCsp && req.method === "GET") {
+        res.setHeader("Content-Security-Policy", adsCsp);
+      }
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

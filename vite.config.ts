@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { defineConfig } from 'vite';
 import apkHtmlPlugin from './scripts/vite-apk-html-plugin';
+import viteAdsCspPlugin from './scripts/vite-ads-csp-plugin.mjs';
 
 const buildId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const builtAt = new Date().toISOString();
@@ -29,6 +30,7 @@ export default defineConfig(() => {
       tailwindcss(),
       // Strip Vite's crossorigin attrs so APK WebView does not drop CSS/JS.
       apkHtmlPlugin(),
+      viteAdsCspPlugin(),
       {
         name: 'kora-version-json',
         writeBundle() {
