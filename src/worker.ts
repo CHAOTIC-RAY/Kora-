@@ -32,6 +32,12 @@ import { resolveRelayStore } from "./lib/relay/store";
 import { resolveLibgenSigned } from "./lib/libgenSigned";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
 import {
+  executeSourceFetch,
+  parseSourceFetchQuery,
+  sourceFetchJsonResponse,
+  SOURCE_FETCH_CORS_HEADERS,
+} from "./lib/sourceFetchRelay";
+import {
   getNetgalleyCoverUrl,
   searchNetgalleyCatalog,
   getNetgalleyBookDetails,
@@ -515,6 +521,27 @@ export default {
         limiter: relayLimiter,
       });
       if (relayResponse) return relayResponse;
+    }
+
+    if (path === "/api/source-fetch") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: SOURCE_FETCH_CORS_HEADERS });
+      }
+      if (request.method === "GET") {
+        const parsed = parseSourceFetchQuery(
+          Object.fromEntries(url.searchParams.entries()),
+          request.headers.get("X-Source-Headers")
+        );
+        if ("error" in parsed) {
+          return new Response(JSON.stringify({ ok: false, error: parsed.error }), {
+            status: parsed.status,
+            headers: { "Content-Type": "application/json", ...SOURCE_FETCH_CORS_HEADERS },
+          });
+        }
+        const result = await executeSourceFetch(parsed);
+        const { status, body, headers } = sourceFetchJsonResponse(result);
+        return new Response(body, { status, headers });
+      }
     }
 
     // Handle CORS preflights

@@ -681,7 +681,11 @@ export interface ResolvedMatchGame {
  * the history view.
  */
 export function resolveMatchGame(ref: StoredMatchRef | null | undefined): ResolvedMatchGame {
-  const stored = typeof ref?.gameName === "string" ? ref.gameName.trim() : "";
+  const rawName = typeof ref?.gameName === "string" ? ref.gameName : "";
+  const stored = rawName.trim();
+  if (rawName.length > 0 && !stored) {
+    return { name: "Unknown game", degraded: true };
+  }
 
   if (ref?.gameId) {
     const preset = getPresetById(ref.gameId);

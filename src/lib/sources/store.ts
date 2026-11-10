@@ -336,6 +336,10 @@ export function setSourceOptIn(id: string, allow: boolean): void {
   writeJSON(LS_OPTED_IN, Array.from(set));
 }
 
+export function isSourceOptedIn(id: string): boolean {
+  return optedIn().includes(id);
+}
+
 export function hasOptedInAnything(): boolean {
   return optedIn().length > 0;
 }

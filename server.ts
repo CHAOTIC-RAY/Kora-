@@ -38,6 +38,12 @@ import {
   searchNetgalleyCatalog,
 } from "./src/lib/netgalley";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./src/lib/feedServer";
+import {
+  executeSourceFetch,
+  parseSourceFetchQuery,
+  sourceFetchJsonResponse,
+  SOURCE_FETCH_CORS_HEADERS,
+} from "./src/lib/sourceFetchRelay";
 
 dotenv.config();
 
@@ -65,6 +71,24 @@ function getGeminiClient() {
 }
 
 app.use("/api/zlib", zlibRouter);
+
+app.options("/api/source-fetch", (_req, res) => {
+  res.set(SOURCE_FETCH_CORS_HEADERS).status(204).end();
+});
+
+app.get("/api/source-fetch", async (req, res) => {
+  const parsed = parseSourceFetchQuery(req.query as Record<string, unknown>, req.header("x-source-headers"));
+  if ("error" in parsed) {
+    res
+      .set(SOURCE_FETCH_CORS_HEADERS)
+      .status(parsed.status)
+      .json({ ok: false, error: parsed.error, status: parsed.status, body: "", finalUrl: "" });
+    return;
+  }
+  const result = await executeSourceFetch(parsed);
+  const { status, body, headers } = sourceFetchJsonResponse(result);
+  res.set(headers).status(status).send(body);
+});
 
 app.get("/api/news/location", (req, res) => {
   const rawCountry = req.headers["cf-ipcountry"] || req.headers["x-vercel-ip-country"] || "";
