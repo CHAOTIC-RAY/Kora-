@@ -9,7 +9,7 @@ const checks = [
   { name: "nytimes-overview", path: "/api/nytimes/overview" },
   {
     name: "source-fetch",
-    path: `/api/source-fetch?u=${encodeURIComponent("https://gutendex.com/books/?search=test")}&b=${encodeURIComponent("https://gutendex.com")}`,
+    path: `/api/source-fetch?u=${encodeURIComponent("https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-Plugins/main/index.json")}&b=${encodeURIComponent("https://raw.githubusercontent.com")}`,
   },
 ];
 

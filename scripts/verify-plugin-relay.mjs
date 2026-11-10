@@ -5,8 +5,10 @@
 import { spawnSync } from "node:child_process";
 
 const base = process.env.KORA_TEST_ORIGIN || "http://127.0.0.1:5000";
-const u = encodeURIComponent("https://gutendex.com/books/?search=pride");
-const b = encodeURIComponent("https://gutendex.com");
+const u = encodeURIComponent(
+  "https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-Plugins/main/index.json"
+);
+const b = encodeURIComponent("https://raw.githubusercontent.com");
 const url = `${base}/api/source-fetch?u=${u}&b=${b}`;
 
 let res;
